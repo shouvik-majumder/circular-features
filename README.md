@@ -105,3 +105,68 @@ headline number but the gap between it and a baseline with the same access to th
    back onto it.
 4. **Other cyclic sets** with no lexical ordering cue: compass directions, musical notes,
    seasons, clock hours.
+
+---
+
+## Step 3: is the circle used, or only present?
+
+Rotate a day's representation inside the fitted circle plane by k steps, leave everything outside
+that plane untouched, and ask whether the model's answer to "Today is X. Tomorrow is" advances by
+k days. Baseline accuracy on the tasks is 1.00, 1.00 and 0.57.
+
+| Condition | answer shifts by exactly k (k != 0) | answer unchanged | mean displacement |
+|---|---|---|---|
+| rotate in the fitted circle | **0.222** | 0.365 | 62 |
+| rotate in PC3-PC4 / PC5-PC6 (variance-matched control) | 0.060 | 0.575 | 33 |
+| rotate in a random plane | ~0.14 (chance) | - | 1.5 |
+
+Chance is 1/7 = 0.143. The circle plane moves the answer in the intended direction almost four
+times as often as a control plane of comparable size, and the control mostly leaves the answer
+alone. A random plane in the full space barely perturbs the activation at all, which is why it is
+not the control that counts.
+
+So the circle is **used**, not merely present, though the effect is partial rather than a clean
+one-to-one rotation of the answer.
+
+## Step 4: more than one cycle at once
+
+**Weekday x month is a torus.** 84 prompts, one per (weekday, month) pair:
+
+| Measure | Weekday x month | Arbitrary control pairing |
+|---|---|---|
+| additive model R^2 | **0.982** | 0.888 |
+| interaction left over | **0.018** | 0.112 |
+| principal angles between the two circle planes | 83, 89 degrees | - |
+| persistent homology, two longest 1-cycles | **0.292, 0.291** | 0.063, 0.043 |
+
+Three independent signatures agree. The joint representation is almost perfectly additive, the
+two circles occupy near-orthogonal directions, and the point cloud carries **two** long-lived
+loops of nearly equal persistence, which is the topological signature of a torus. A single circle
+(the 7 weekday points alone) gives one loop at 0.136. The control pairing gives loops five times
+shorter.
+
+**Day of month is a helix.** Regressing the 31 item vectors on a linear ramp plus sine/cosine
+pairs at several candidate periods, and testing each against a shuffled-label null:
+
+| Component | unique variance | null 95th pct | verdict |
+|---|---|---|---|
+| period 3 | 0.206 | 0.178 | real |
+| period 31 | 0.193 | 0.096 | real |
+| linear | 0.106 | 0.051 | real |
+| periods 10, 5, 12, 7, 2 | 0.033 to 0.088 | ~0.10 | fit noise |
+
+A linear component plus a circular one is a helix, which matches
+[Kantamneni & Tegmark 2025](https://arxiv.org/abs/2502.00873) for integers. The base-10 periods
+they report (2, 5, 10) do **not** clear the null here, plausibly because 31 items and 17 fitted
+parameters leave little power. The period-3 component is unexplained and survived a fix to the
+prompt templates.
+
+### Prior work worth knowing
+
+- Numbers are represented as a generalised helix with periods 2, 5, 10, 100 plus a linear term,
+  and the model uses it causally ("Clock" algorithm):
+  [arXiv:2502.00873](https://arxiv.org/abs/2502.00873), code
+  [subhashk01/LLM-addition](https://github.com/subhashk01/LLM-addition).
+- Cyclic-concept arithmetic in Llama-3.1-8B runs through generic base-10 addition rather than
+  concept-specific modular arithmetic: [arXiv:2605.01148](https://arxiv.org/abs/2605.01148).
+- Neither studies **joint** cyclic variables or toroidal structure. That part appears open.
