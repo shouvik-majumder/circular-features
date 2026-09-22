@@ -132,8 +132,12 @@ def harmonic_decomposition(X: np.ndarray, n_items: int | None = None, seed: int 
     }
 
 
-def ellipse_axis_ratio(X: np.ndarray) -> float:
-    """Ratio of the two principal spreads in the best-fitting plane. 1.0 = round, 0 = a line."""
+def pc_spread_ratio(X: np.ndarray) -> float:
+    """Ratio of the spread along PC2 to the spread along PC1 of the whole item cloud.
+
+    1.0 = equal spread in the best plane, 0 = a line. This is NOT an ellipse fit: for a deformed
+    loop the top two PCs also absorb higher-harmonic and uneven-spacing variance.
+    """
     Xc = X - X.mean(0, keepdims=True)
     s = np.linalg.svd(Xc, compute_uv=False)
     return float(s[1] / max(s[0], 1e-12))

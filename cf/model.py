@@ -17,7 +17,7 @@ MODELS = {
     # name -> (TransformerLens model id, a sensible middle layer to look at first)
     "gpt2": ("gpt2", 7),
     "gpt2-medium": ("gpt2-medium", 12),
-    "gemma-2-2b": ("google/gemma-2-2b-it", 16),
+    "gemma-2-2b-it": ("google/gemma-2-2b-it", 16),  # instruction-tuned; the base model is not used
 }
 
 
@@ -64,5 +64,19 @@ def item_activations(model, item_set, layer: int, hook: str = "resid_post",
 
 @torch.no_grad()
 def layer_sweep(model, item_set, hook: str = "resid_post") -> dict[int, np.ndarray]:
-    """Activations at every layer, for asking where in the network the structure appears."""
-    return {L: item_activations(model, item_set, L, hook)[0] for L in range(model.cfg.n_layers)}
+    """Activations at every layer, for asking where in the network the structure appears.
+
+    One forward pass per prompt caches every layer at once, instead of re-running all prompts
+    once per layer (26x fewer passes for Gemma). Same averaging and read position as
+    `item_activations`.
+    """
+    layers = list(range(model.cfg.n_layers))
+    names = [f"blocks.{L}.hook_{hook}" for L in layers]
+    per = {L: {it: [] for it in item_set.items} for L in layers}
+    for item, prompt in item_set.prompts():
+        tokens = model.to_tokens(prompt, prepend_bos=True)
+        _, cache = model.run_with_cache(tokens, names_filter=names)
+        _, end = item_token_span(model, prompt, item)
+        for L, nm in zip(layers, names):
+            per[L][item].append(cache[nm][0, end - 1].float().cpu().numpy())
+    return {L: np.stack([np.mean(per[L][i], axis=0) for i in item_set.items]) for L in layers}

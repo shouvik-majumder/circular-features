@@ -9,8 +9,11 @@ multi-dimensional objects, and days of the week and months of the year sit on **
 model uses to do modular arithmetic.
 
 This repository builds the measurement from scratch rather than running theirs, so that every
-control is explicit, and extends it to Gemma-2-2B, which the original work did not test.
-Free and local: GPT-2 is a 0.5 GB ungated download, Gemma-2-2B is already cached from an earlier
+control is explicit, and extends it to Gemma-2-2B-IT, which the original work did not test.
+**Model note:** every Gemma result here uses the instruction-tuned checkpoint
+`google/gemma-2-2b-it` (prompts are plain text, no chat template), not the base model. Earlier
+versions of this README called it Gemma-2-2B; the key is now `gemma-2-2b-it` everywhere.
+Free and local: GPT-2 is a 0.5 GB ungated download, Gemma-2-2B-IT is already cached from an earlier
 project.
 
 ## Setup
@@ -41,14 +44,15 @@ from `D:\dev\ESR\.env`.
 | `03_rotate_circle.py` | Rotate inside the fitted circle plane; does the answer advance by k? | ~10 min |
 | `04_multicycle.py` | Weekday x month joint geometry, day-of-month Fourier spectrum | ~10 min |
 | `05_summary_figures.py` | Cross-project summary panels | ~5 min |
-| `06_deformation.py` | Harmonics, ellipse axis ratio, angular gaps: circle or deformed loop? | ~3 min |
+| `06_deformation.py` | Harmonics, PC2/PC1 spread, angular gaps: circle or deformed loop? | ~3 min |
 | `07_torus_validation.py` | Denser sampling, three read positions, cloud-perturbing nulls, depth sweep | ~25 min |
 | `08_rotate_month.py` | Rotate the month subspace inside a full date prompt | ~30 min |
 | `09_intervention_diagnostic.py` | Did the rotation actually perturb the activation? | ~2 min |
+| `10_day_of_month.py` | Day-of-month periods with tokenisation recorded; clean on GPT-2 | ~2 min |
 
 ```powershell
 python scripts/01_find_circles.py                                  # gpt2, layer 7
-python scripts/01_find_circles.py --model gemma-2-2b --dtype bfloat16
+python scripts/01_find_circles.py --model gemma-2-2b-it --dtype bfloat16
 python scripts/02_layer_sweep.py --hook resid_pre                  # includes the raw embedding
 ```
 
@@ -85,17 +89,34 @@ GPT-2 small, `blocks.7.hook_resid_post`:
 | animals (control) | 0.44 | 0.62 | 0.43 | 0.71 |
 | objects (control) | 0.44 | 0.43 | 0.57 | 0.71 |
 
-Gemma-2-2B, `blocks.16.hook_resid_post`: weekdays 0.19 / 1.00, months 0.20 / 1.00, controls at or
+Gemma-2-2B-IT, `blocks.16.hook_resid_post`: weekdays 0.19 / 1.00, months 0.20 / 1.00, controls at or
 below chance. **The circles replicate in a model the original paper did not test.**
 
 The number-words row is the one that makes the result meaningful. It is perfectly *ordered* but
 not at all *circular*, which is exactly what an ordinal, non-cyclic concept should look like. The
 measures are therefore distinguishing ring from line, not just structure from noise.
 
-**But most of the circle is in the token embeddings.** Reading the residual stream *before* any
-attention or MLP has run (`blocks.0.hook_resid_pre`), weekdays already score radial CV 0.23 with
-order 1.00. Through the network it sharpens to 0.14 by layer 3 and holds. So the network refines
-a circle it largely inherits from the embedding rather than constructing one.
+**A stronger shape null.** Isotropic Gaussian points are a weak comparison, because real
+activations have a few dominant directions. `01_find_circles.py` now also draws points from a
+Gaussian with each item set's *own* covariance. Weekdays and months still sit below that null's
+5th percentile of radial CV in both models (GPT-2: 0.15 vs 0.26 and 0.14 vs 0.31; Gemma: 0.19 vs
+0.24 and 0.20 vs 0.32); number words and the controls do not.
+
+**How much of the circle is in the token embeddings depends on the concept.** Reading the residual
+stream *before* any attention or MLP has run (`blocks.0.hook_resid_pre`), radial CV / order:
+
+| | embedding | early layers | resid_post, layer 16 (Gemma) / 7 (GPT-2) |
+|---|---|---|---|
+| GPT-2 weekdays | 0.23 / 1.00 | 0.14 by layer 2 | 0.15 |
+| GPT-2 months | 0.31 / 1.00 | 0.18 by layer 4 | 0.14 |
+| Gemma weekdays | 0.23 / 1.00 | 0.19 by layer 5 | 0.19 |
+| Gemma months | 0.33 / 1.00 | **0.10** by layer 5 | 0.20 |
+
+The **weekday** ring is largely inherited from the embedding in both models: already ordered and
+nearly as round before any layer runs. The **month** ring starts looser and the first few layers
+tighten it substantially, most clearly in Gemma (0.33 -> 0.10). An earlier version of this README
+stated the embedding result without saying it came from GPT-2 only; the Gemma sweep
+(`02_layer_sweep.py --model gemma-2-2b-it --hook resid_pre`) has now been run.
 
 That is the same lesson as the previous two projects: the interesting quantity is not the
 headline number but the gap between it and a baseline with the same access to the data.
@@ -118,19 +139,27 @@ headline number but the gap between it and a baseline with the same access to th
 ## Step 3: is the circle used, or only present?
 
 Rotate a day's representation inside the fitted circle plane by k steps, leave everything outside
-that plane untouched, and ask whether the model's answer to "Today is X. Tomorrow is" advances by
-k days. Baseline accuracy on the tasks is 1.00, 1.00 and 0.57.
+that plane untouched, and ask whether the model's answer advances by k days. Three tasks ("Today is
+X. Tomorrow is" / "Yesterday was" / "The day after tomorrow is"); baseline accuracy 1.00, 0.57 and
+1.00. Each shift is scored against the model's **own unrotated answer** for that prompt, so the
+0.57 task's baseline mistakes cannot leak in. 21 trials per shift, 126 for all k != 0; 95% Wilson
+intervals.
 
-| Condition | answer shifts by exactly k (k != 0) | answer unchanged | mean displacement |
+| Condition | answer moves by exactly k (k != 0) | answer unchanged | mean displacement |
 |---|---|---|---|
-| rotate in the fitted circle | **0.222** | 0.365 | 62 |
-| rotate in PC3-PC4 / PC5-PC6 (variance-matched control) | 0.060 | 0.575 | 33 |
-| rotate in a random plane | ~0.14 (chance) | - | 1.5 |
+| rotate in the fitted circle | **0.230** [0.165-0.311] | 0.35 | 61.5 |
+| rotate in PC3-PC4 (variance-matched control) | 0.056 [0.027-0.110] | 0.53 | 38.8 |
+| rotate in PC5-PC6 (variance-matched control) | 0.032 [0.012-0.079] | 0.69 | 28.2 |
+| rotate in a random plane (5 planes) | 0.000-0.008 | 0.96-1.00 | 1.4-2.0 |
 
-Chance is 1/7 = 0.143. The circle plane moves the answer in the intended direction almost four
-times as often as a control plane of comparable size, and the control mostly leaves the answer
-alone. A random plane in the full space barely perturbs the activation at all, which is why it is
-not the control that counts.
+The circle plane moves the answer by the intended amount four to seven times as often as a
+control plane of comparable size, and the intervals do not overlap. A random plane barely perturbs
+the activation at all, so the answer simply does not change; that is why it is not the control
+that counts. (The first version scored against the correct answer, which gave 0.222 for the circle
+and let random planes land on "target" by chance about 0.14 of the time via baseline errors.)
+
+Per-shift rates rest on 21 trials each and are noisy (for the circle they range from 0.05 at k = -2
+to 0.38 at k = +3), so read the pooled number, not the curve's shape.
 
 So the circle is **used**, not merely present, though the effect is partial rather than a clean
 one-to-one rotation of the answer.
@@ -147,9 +176,10 @@ step 7. What is real:
 | principal angles between the two circle planes | 88.5, 89.7 degrees | - |
 
 The joint representation is almost perfectly additive and the two factors live in near-orthogonal
-subspaces. That is a clean **product structure**: the model writes weekday and month into the
-residual stream as independent, non-interfering summands. The claim it does *not* support is the
-topological one.
+subspaces: the model writes weekday and month into the residual stream as independent,
+non-interfering summands. Two qualifications from step 7: at the final token the month carries 96%
+of that variance and the weekday only 3%, and the claim it does *not* support is the topological
+one.
 
 **Day of month is a helix.** Regressing the 31 item vectors on a linear ramp plus sine/cosine
 pairs at several candidate periods, and testing each against a shuffled-label null:
@@ -167,6 +197,24 @@ they report (2, 5, 10) do **not** clear the null here, plausibly because 31 item
 parameters leave little power. The period-3 component is unexplained and survived a fix to the
 prompt templates.
 
+**Tokenisation check.** Gemma splits every number into single digits (" 31" is " ", "3", "1"), so
+the Gemma vectors above are read at the units digit, and 1-9 are shorter than 10-31. That could
+have manufactured period structure. GPT-2 keeps " 1" ... " 31" as single tokens, so
+`10_day_of_month.py` repeats the analysis there (`blocks.7.hook_resid_post`):
+
+| Component | GPT-2 unique variance | null 95th pct | verdict |
+|---|---|---|---|
+| period 3 | 0.187 | 0.175 | real |
+| period 31 | 0.167 | 0.093 | real |
+| linear | 0.102 | 0.054 | real |
+| period 2 | 0.049 | 0.049 | at the threshold |
+| periods 5, 10, 12, 7 | 0.053 to 0.089 | ~0.10 | fit noise |
+
+The same three components come out on top in a model with no digit splitting, so the helix and
+the odd period-3 component are **not** tokenisation artefacts. One caveat on reading "period 31" as
+a circle: with 31 items it is a single cycle across the whole range, which a smooth curved (non-
+circular) trajectory can also fit. Whether day 31 actually sits next to day 1 has not been tested.
+
 ## Step 6: is it a circle, or a deformed loop?
 
 Three independent measures, all on the same item vectors, at `blocks.16.hook_resid_post`:
@@ -175,7 +223,7 @@ Three independent measures, all on the same item vectors, at `blocks.16.hook_res
 |---|---|---|---|
 | power in harmonic 1 | 0.57 (null 0.45) | 0.38 (null 0.23) | 1.00 |
 | variance in the best plane | 0.60 | 0.39 | 1.00 |
-| ellipse axis ratio | 0.81 | 0.94 | 1.00 |
+| PC2/PC1 spread (not an ellipse fit) | 0.81 | 0.94 | 1.00 |
 | angular gaps | 33-75 deg (ideal 51) | 12-74 deg (ideal 30) | equal |
 
 **They are deformed loops, not circles.** Roughly half the structure is at harmonic 1; the rest is
@@ -202,54 +250,86 @@ At layer 16, with the two longest 1-cycle lifetimes (a torus needs two long ones
 | month token | 0.024, 0.015 | 0.240, 0.201 | 0.288, 0.268 |
 | last token | 0.039, 0.035 | 0.226, 0.191 | 0.297, 0.263 |
 
-**The real cloud has an order of magnitude *less* persistence than chance**, at every read
-position and at every layer sampled (0 to 24: longest 1-cycle 0.034 to 0.128, never approaching
-the nulls). There is no torus.
+**But the joint barcode alone could not have detected a torus here.** A positive control fixes
+this: an ideal torus (two perfect, evenly spaced, orthogonal circles) built with the *same*
+weekday/month variance split and pushed through the identical pipeline. At the final token the
+split is lopsided - weekday 3.3% of the variance, month 96.2% - and for a torus that lopsided the
+small weekday loop scores 0.175, *below* the Gaussian null (0.191). The original "both loops must
+beat the null" rule would have called a perfect torus "not clear". That rule is therefore reported
+but no longer used.
+
+Two tests that do have power:
+
+| read position | ideal torus, longest loop | real, longest loop | weekday main effect a loop? | month main effect a loop? |
+|---|---|---|---|---|
+| month token | 1.19 | 0.024 | 0.000 (null 95th 0.130) | 0.007 (null 95th 0.199, p = 0.89) |
+| final token | 1.18 | 0.039 | 0.000 (null 95th 0.115) | 0.021 (null 95th 0.213, p = 0.78) |
+
+- **Dominant loop.** An ideal torus with this split shows the month loop at ~1.2. The real cloud's
+  longest loop is 0.02-0.04. The dominant factor does not form a loop in the joint cloud at all.
+- **Per-factor loops.** Each factor's main effect (7 or 12 points), tested on its own against a
+  covariance-matched null of the same size: neither is a loop in the full space, at either read
+  position.
+
+So the conclusion stands, for a stronger reason than first given: **no torus, because neither
+factor's joint-prompt representation is itself a persistent loop.** The single-factor circles are
+ordered rings *in their top two principal components* (step 1), but with only 38-57% of their
+variance at harmonic 1 (step 6), the rest spreads over other directions and the full-dimensional
+point set does not close into a loop that a Rips filtration can see. The step-1 weekday set at the
+weekday token is borderline on the same test (0.143 against a null 95th of 0.141, p = 0.06).
+
+"Additive product" also needs qualifying: at the final token the structure is **mostly month plus a
+small weekday offset** (3.3% of variance), in near-orthogonal directions, at every layer.
 
 Two methodological notes, both mistakes made and then caught here:
 
 - A **label permutation cannot test topology**. Shuffling the item names leaves the point cloud,
   and therefore the barcode, exactly as it was. Any null for a topological claim has to move the
-  points.
+  points. And a null is only half a test: without a positive control there is no way to know the
+  test could have said yes.
 - **Reading at the weekday token is not a valid joint measurement.** Attention is causal, so in
   "The date is Monday, March the 3rd" the month has not been seen when the weekday token is
-  computed; additivity there is 1.000 by construction, and the barcode shows exactly one loop
-  (0.143) with nothing second (0.000) - the weekday circle alone, as it must. Only the final token
-  sees both factors.
-
-So the honest statement is: two deformed loops, written additively into near-orthogonal subspaces,
-with no toroidal topology. Additivity plus per-factor circularity is *necessary* for a torus but
-not, at this sampling density and this degree of deformation, sufficient to produce one.
+  computed; additivity there is 1.000 by construction. Only the final token sees both factors.
 
 ## Step 8: the month circle does not steer month arithmetic
 
-Step 3 rotated the weekday circle in a single-factor prompt and the answer moved. This asks the
+Step 3 rotated a single-factor circle in a single-factor prompt and the answer moved. This asks the
 harder version: in a prompt naming both a weekday and a month, does rotating the *month* subspace
 at the month token move the model's month answer by the right number of months?
 
-Baseline accuracy on the three tasks is 1.00, 0.69 and 1.00. Rotating by k months:
+Three tasks, 3 weekdays x 12 months each; baseline accuracy 1.00, 0.69 and 1.00. Shifts are scored
+against the model's own unrotated answer, per task. 648 trials for all k != 0; 95% Wilson intervals.
 
-| | answer shifts by exactly k (k != 0) |
+| | answer moves by exactly k (k != 0) |
 |---|---|
-| rotate in the fitted month circle | 0.028 |
-| rotate in PC3-PC4 (variance-matched control) | 0.008 |
-| rotate in PC5-PC6 (variance-matched control) | 0.017 |
+| rotate in the fitted month circle | 0.023 [0.014-0.038] |
+| rotate in PC3-PC4 (variance-matched control) | 0.000 [0.000-0.006] |
+| rotate in PC5-PC6 (variance-matched control) | 0.002 [0.000-0.009] |
 | chance | 0.083 |
 
-**The month answer does not rotate.** Every condition is below chance, and essentially all the
-probability mass sits in two columns: the answer is unchanged, or it is the input month itself.
+**The month answer does not rotate.** What does change is how often the model falls back to the
+input month, and broken down by task that effect lives entirely in one place:
 
-What the rotation *does* change is how often the model fails to increment at all:
+| answer = input month, at rotation -3 ... +3 | month circle | PC3-PC4 control | PC5-PC6 control |
+|---|---|---|---|
+| "It was D, M. The next month is" (baseline 1.00) | 0.00 everywhere | 0.00 everywhere | 0.00 everywhere |
+| "On D in M. One month later it was" (baseline 0.69) | 0.81 0.64 0.50 **0.31** 0.14 0.14 0.00 | 0.08 0.08 0.14 **0.31** 0.39 0.50 0.47 | 0.25 0.28 0.31 **0.31** 0.36 0.36 0.36 |
+| "It was D, M. The previous month was" (baseline 1.00) | 0.00, except 0.11 at +3 | 0.00 everywhere | 0.00 everywhere |
 
-| rotation applied | -3 | -2 | -1 | 0 | +1 | +2 | +3 |
-|---|---|---|---|---|---|---|---|
-| answer = the input month (failure to increment) | 0.27 | 0.21 | 0.17 | **0.10** | 0.05 | 0.05 | 0.00 |
+- On the two tasks the model does reliably, rotating the month circle does **nothing**: no shift,
+  no fallback.
+- On the one task where the model is already unsure (it echoes the input month 31% of the time
+  unperturbed), rotation pushes it monotonically towards or away from echoing. But the control
+  planes do the same, just less (swing 0.81 for the circle, 0.39 and 0.11 for the controls, in
+  line with how far each rotation moves the activation: 64, 50 and 37 at k = 3). The circle's
+  small on-target excess (0.023) is this same effect: at k = -1, falling back to the input month
+  counts as "shifted by -1".
+- Rotating the month subspace never disturbed the weekday answer in the same prompt (0.00 in every
+  condition), consistent with the near-orthogonality measured in step 7.
 
-Rotation 0 gives 0.10, which is the baseline error rate. Rotating one way makes the +1 operation
-fail more often, rotating the other way makes it more reliable, monotonically. The month circle
-therefore *gates* the arithmetic without *carrying* its output. Rotating the month subspace also
-never disturbed the weekday answer in the same prompt (0.00 at every shift), which is consistent
-with the near-orthogonality measured in step 7.
+An earlier version of this section pooled the three tasks and read the fallback curve as "the
+month circle gates the +1 operation". Per task, that reading does not hold: the effect is confined
+to a fragile prompt, and it is only partly specific to the circle plane.
 
 ### Ruling out "the intervention never landed"
 
@@ -268,10 +348,10 @@ weekday step, because 1/12 of a circle is a smaller angle than 1/7 - but **a 3-m
 displaces the activation by 64, more than the 53 that moved the weekday answer, and still produces
 zero on-target shifts.** Perturbation size does not explain the null.
 
-So the honest reading is that the weekday result of step 3 does not generalise. A circle can be
-present, ordered, and causally relevant to whether a computation succeeds, without being the
-representation the computation reads its answer off. That distinction is easy to lose when the only
-evidence is a picture of a ring.
+So the honest reading is that the weekday result of step 3 does not generalise to months in a
+two-factor prompt. The month circle is present and ordered, but rotating it neither moves the
+answer nor specifically controls whether the model applies the offset. That distinction is easy to
+lose when the only evidence is a picture of a ring.
 
 ### Prior work worth knowing
 

@@ -6,7 +6,7 @@ Everything is reported against two nulls, because a ring on its own means very l
 
   python scripts/01_find_circles.py                        # gpt2, layer 7
   python scripts/01_find_circles.py --layer 5 --hook resid_pre
-  python scripts/01_find_circles.py --model gemma-2-2b --dtype bfloat16
+  python scripts/01_find_circles.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from cf.geometry import circularity, fit_circle, gaussian_null, shuffle_null  # noqa: E402
+from cf.geometry import (circularity, fit_circle, gaussian_null, matched_gaussian_null,
+                         shuffle_null)  # noqa: E402
 from cf.model import MODELS, item_activations, load  # noqa: E402
 from cf.prompts import DEFAULT_ORDER, SETS  # noqa: E402
 
@@ -57,14 +58,17 @@ def main() -> None:
         m = circularity(X)
         sh = shuffle_null(X)
         gn = gaussian_null(len(items), X.shape[1])
+        mg = matched_gaussian_null(X)
         results[name] = {"kind": s.kind, "items": items,
                          "pc12_variance": m["pc12_variance"], "radial_cv": m["radial_cv"],
                          "order_score": m["order_score"], "xy": m["xy"].tolist(),
-                         "shuffle_null": sh, "gaussian_null": gn}
+                         "shuffle_null": sh, "gaussian_null": gn,
+                         "matched_gaussian_null": mg}
         rows.append((name, s.kind, m, sh, gn))
         print(f"{name:<22} ({s.kind})")
         print(f"   variance in PC1+PC2 : {m['pc12_variance']:.2f}   (random points: {gn['pc12_mean']:.2f})")
-        print(f"   radial CV (0=circle): {m['radial_cv']:.2f}   (random points: {gn['radial_cv_mean']:.2f})")
+        print(f"   radial CV (0=circle): {m['radial_cv']:.2f}   (isotropic points: {gn['radial_cv_mean']:.2f}; "
+              f"covariance-matched: mean {mg['radial_cv_mean']:.2f}, 5th pct {mg['radial_cv_p05']:.2f})")
         print(f"   order score         : {m['order_score']:.2f}   "
               f"(shuffled labels: mean {sh['mean']:.2f}, 95th pct {sh['p95']:.2f})")
 

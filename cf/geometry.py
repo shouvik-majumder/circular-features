@@ -9,8 +9,8 @@ Three numbers are reported for every item set:
                   plane. A perfect circle gives 0. Low means "ring", not just "flat".
 
   order_score     how well the angular order around the ring matches the calendar order,
-                  measured as the fraction of consecutive items that are adjacent neighbours
-                  going round. This is the part that separates a *meaningful* circle from a
+                  measured as the fraction of items that sit in exactly their calendar slot
+                  going round (best over rotations and both directions). This is the part that separates a *meaningful* circle from a
                   coincidental ring: seven arbitrary points can look round, but they will not be
                   in the right order.
 
@@ -43,11 +43,12 @@ def radial_cv(xy: np.ndarray) -> float:
 
 
 def angular_order_score(xy: np.ndarray) -> float:
-    """Fraction of consecutive item pairs that are also neighbours in angular order.
+    """Fraction of items that occupy exactly their calendar slot in angular order.
 
     Items are assumed to be given in their natural order (Monday...Sunday). We sort them by
-    angle around the centroid and ask how much of the original sequence survives, in either
-    direction. 1.0 means the ring is traversed in calendar order.
+    angle around the centroid, then compare each item's rank with its calendar index, allowing
+    any rotation of the starting point and either direction, and keep the best match. 1.0 means
+    the ring is traversed in calendar order. One adjacent swap of 7 items scores 5/7.
     """
     n = len(xy)
     c = xy.mean(0)
@@ -89,8 +90,8 @@ def shuffle_null(X: np.ndarray, n_draws: int = 2000, seed: int = 0) -> dict:
 def gaussian_null(n_items: int, d_model: int, n_draws: int = 200, seed: int = 0) -> dict:
     """Null for the ring shape itself: isotropic Gaussian points of the same size and dimension.
 
-    Answers 'how circular does a random set of this size look after its own PCA?'. If real items
-    are not clearly better than this, there is no finding.
+    A weak null: real activations are far from isotropic. Kept for continuity; the covariance-
+    matched null below and the control item sets are the comparisons that carry weight.
     """
     rng = np.random.default_rng(seed)
     cvs, orders, pc12 = [], [], []
@@ -99,6 +100,26 @@ def gaussian_null(n_items: int, d_model: int, n_draws: int = 200, seed: int = 0)
         cvs.append(m["radial_cv"]); orders.append(m["order_score"]); pc12.append(m["pc12_variance"])
     return {"radial_cv_mean": float(np.mean(cvs)), "radial_cv_p05": float(np.percentile(cvs, 5)),
             "order_mean": float(np.mean(orders)), "order_p95": float(np.percentile(orders, 95)),
+            "pc12_mean": float(np.mean(pc12))}
+
+
+def matched_gaussian_null(X: np.ndarray, n_draws: int = 200, seed: int = 0) -> dict:
+    """Null for the ring shape with the items' own second-order structure.
+
+    Draws the same number of points from a Gaussian with the item set's covariance, so the
+    spread along each principal direction matches. Any circularity the real set shows beyond
+    this is not explained by 'a few dominant directions of variance'.
+    """
+    rng = np.random.default_rng(seed)
+    Xc = X - X.mean(0, keepdims=True)
+    _, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    scale = S / np.sqrt(len(X))
+    cvs, pc12 = [], []
+    for _ in range(n_draws):
+        G = (rng.standard_normal((len(X), len(S))) * scale) @ Vt
+        m = circularity(G)
+        cvs.append(m["radial_cv"]); pc12.append(m["pc12_variance"])
+    return {"radial_cv_mean": float(np.mean(cvs)), "radial_cv_p05": float(np.percentile(cvs, 5)),
             "pc12_mean": float(np.mean(pc12))}
 
 

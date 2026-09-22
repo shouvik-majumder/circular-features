@@ -1,5 +1,5 @@
 {
-  "model": "gemma-2-2b",
+  "model": "gemma-2-2b-it",
   "layer": 16,
   "templates": [
     "The date is {a}, {b} the 3rd",
@@ -44,7 +44,49 @@
           }
         }
       },
-      "verdict": "not clear"
+      "positive_control": {
+        "h1": [
+          1.0811663269996643,
+          0.0007602851837873459
+        ],
+        "nulls": {
+          "gaussian": {
+            "first": {
+              "mean": 0.24623881459236144,
+              "p95": 0.3532441645860671
+            },
+            "second": {
+              "mean": 0.18673016428947448,
+              "p95": 0.25216768234968184
+            }
+          },
+          "additive_random": {
+            "first": {
+              "mean": 0.23046707928180696,
+              "p95": 0.3633952796459198
+            },
+            "second": {
+              "mean": 0.16481758177280426,
+              "p95": 0.23343267440795898
+            }
+          }
+        },
+        "passes_two_loop_rule": false
+      },
+      "weekday_main_effect_loop": {
+        "h1": 0.1431732177734375,
+        "null_mean": 0.029113444685935973,
+        "null_p95": 0.14126067757606503,
+        "p_value": 0.0594059405940594
+      },
+      "month_main_effect_loop": {
+        "h1": 0.0,
+        "null_mean": 0.0,
+        "null_p95": 0.0,
+        "p_value": 1.0
+      },
+      "dominant_loop_above_null": false,
+      "verdict": "not a torus"
     },
     "month_token": {
       "additive_r2": 0.9959183307315224,
@@ -81,7 +123,49 @@
           }
         }
       },
-      "verdict": "not clear"
+      "positive_control": {
+        "h1": [
+          1.1920030117034912,
+          0.11815449595451355
+        ],
+        "nulls": {
+          "gaussian": {
+            "first": {
+              "mean": 0.23407995879650115,
+              "p95": 0.32772284001111984
+            },
+            "second": {
+              "mean": 0.17603100419044496,
+              "p95": 0.2491151377558708
+            }
+          },
+          "additive_random": {
+            "first": {
+              "mean": 0.23073424756526947,
+              "p95": 0.29676283001899717
+            },
+            "second": {
+              "mean": 0.19222574234008788,
+              "p95": 0.24999657571315764
+            }
+          }
+        },
+        "passes_two_loop_rule": false
+      },
+      "weekday_main_effect_loop": {
+        "h1": 0.0,
+        "null_mean": 0.021440665125846862,
+        "null_p95": 0.12980263829231262,
+        "p_value": 1.0
+      },
+      "month_main_effect_loop": {
+        "h1": 0.006892681121826172,
+        "null_mean": 0.0893311232328415,
+        "null_p95": 0.19900683760643004,
+        "p_value": 0.8910891089108911
+      },
+      "dominant_loop_above_null": false,
+      "verdict": "not a torus"
     },
     "last_token": {
       "additive_r2": 0.9950262583470232,
@@ -118,7 +202,49 @@
           }
         }
       },
-      "verdict": "not clear"
+      "positive_control": {
+        "h1": [
+          1.1797174215316772,
+          0.17488181591033936
+        ],
+        "nulls": {
+          "gaussian": {
+            "first": {
+              "mean": 0.2185373282432556,
+              "p95": 0.31909754872322077
+            },
+            "second": {
+              "mean": 0.17229515552520752,
+              "p95": 0.2442490920424461
+            }
+          },
+          "additive_random": {
+            "first": {
+              "mean": 0.23073424756526947,
+              "p95": 0.29676283001899717
+            },
+            "second": {
+              "mean": 0.19222574234008788,
+              "p95": 0.24999657571315764
+            }
+          }
+        },
+        "passes_two_loop_rule": false
+      },
+      "weekday_main_effect_loop": {
+        "h1": 0.0,
+        "null_mean": 0.01987298369407654,
+        "null_p95": 0.11538278460502621,
+        "p_value": 1.0
+      },
+      "month_main_effect_loop": {
+        "h1": 0.02098524570465088,
+        "null_mean": 0.08947476923465729,
+        "null_p95": 0.2128355324268341,
+        "p_value": 0.7821782178217822
+      },
+      "dominant_loop_above_null": false,
+      "verdict": "not a torus"
     }
   },
   "depth_profile": {

@@ -4,10 +4,11 @@ Three independent ways of asking, all on the same item vectors:
 
   harmonics    decompose the loop into harmonics of the item order. A perfect circle is pure
                harmonic 1. Power at harmonic 2 and above is deformation.
-  axis ratio   the two principal spreads in the best plane. 1.0 is round, smaller is elliptical.
+  PC spread    PC2 spread / PC1 spread of the loop. 1.0 is round, smaller is squashed. Not an
+               ellipse fit: higher harmonics also load on the top two PCs.
   gaps         angular spacing between consecutive items. A regular polygon has equal gaps.
 
-  python scripts/06_deformation.py --model gemma-2-2b --dtype bfloat16
+  python scripts/06_deformation.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from cf.geometry import circularity  # noqa: E402
 from cf.model import MODELS, item_activations, load  # noqa: E402
-from cf.periodic import angular_gaps, ellipse_axis_ratio, harmonic_decomposition  # noqa: E402
+from cf.periodic import angular_gaps, harmonic_decomposition, pc_spread_ratio  # noqa: E402
 from cf.prompts import MONTHS, WEEKDAYS  # noqa: E402
 
 plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
@@ -39,7 +40,7 @@ DARK, GREY, ACCENT = "0.25", "0.65", "#1f77b4"
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
@@ -60,7 +61,7 @@ def main() -> None:
         m = circularity(X)
         rec = {"fraction_in_fundamental": h["fraction_in_fundamental"],
                "harmonic_power": h["harmonic_power"], "null_p95": h["null_p95"],
-               "axis_ratio": ellipse_axis_ratio(X), "pc12_variance": m["pc12_variance"],
+               "pc_spread_ratio": pc_spread_ratio(X), "pc12_variance": m["pc12_variance"],
                "gaps": gaps}
         out[name] = rec
         print(f"\n{name} ({len(items)} items)")
@@ -68,7 +69,7 @@ def main() -> None:
               f"{h['fraction_in_fundamental']:.2f}")
         print(f"  harmonic power / total variance: "
               f"{np.round(h['harmonic_power'], 3)}  (null 95th {np.round(h['null_p95'], 3)})")
-        print(f"  ellipse axis ratio (1 = round): {rec['axis_ratio']:.2f}")
+        print(f"  PC2/PC1 spread (1 = round):     {rec['pc_spread_ratio']:.2f}")
         print(f"  variance in the best plane:     {m['pc12_variance']:.2f}  "
               f"(the rest is out-of-plane wobble)")
         print(f"  angular gaps (ideal {gaps['ideal_deg']:.0f} deg): "
@@ -99,9 +100,9 @@ def main() -> None:
     ax.legend(fontsize=8)
 
     ax = axes[2]
-    labels = ["power in\nharmonic 1", "ellipse\naxis ratio", "variance in\nbest plane"]
+    labels = ["power in\nharmonic 1", "PC2/PC1\nspread", "variance in\nbest plane"]
     for i, (name, _) in enumerate(sets):
-        vals = [out[name]["fraction_in_fundamental"], out[name]["axis_ratio"],
+        vals = [out[name]["fraction_in_fundamental"], out[name]["pc_spread_ratio"],
                 out[name]["pc12_variance"]]
         ax.bar(np.arange(3) + (i - 0.5) * w, vals, w, color=[ACCENT, GREY][i],
                edgecolor=DARK, label=name)

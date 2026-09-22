@@ -12,7 +12,12 @@ Two things are being tested at once:
 Controls: rotate in a variance-matched plane (PC3-PC6 of the month main effect), and check the
 weekday answer is undisturbed by a month rotation (it should be, if the factors are independent).
 
-  python scripts/08_rotate_month.py --model gemma-2-2b --dtype bfloat16
+Shifts are scored against the model's own unrotated answer, per task, so baseline errors do not
+leak in. Also recorded per task: how often the answer is simply the input month, i.e. the offset
+was not applied. Per-task tables matter because 'one month short' means the input month for the
++1 tasks but two months back for the -1 task.
+
+  python scripts/08_rotate_month.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -35,6 +40,7 @@ from cf.intervene import (RotationHook, circle_basis, item_angles,  # noqa: E402
                           pc_plane, rotation_matrix)
 from cf.model import MODELS, item_activations, item_token_span, load  # noqa: E402
 from cf.prompts import MONTHS, WEEKDAYS  # noqa: E402
+from cf.stats import wilson  # noqa: E402
 
 plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
                      "axes.spines.top": False, "axes.spines.right": False,
@@ -64,7 +70,7 @@ def logits_over(model, prompt: str, ids: list[int], fwd_hooks=None) -> np.ndarra
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
@@ -88,49 +94,72 @@ def main() -> None:
 
     print("\nbaseline:")
     base_acc = []
-    for t, off in TASKS:
-        ok = sum(int(np.argmax(logits_over(model, t.format(a=d, b=mo), m_ids))) == (j + off) % 12
-                 for d in days for j, mo in enumerate(months))
+    base_pred = {}                       # (task, weekday, month index) -> unrotated month answer
+    for ti, (t, off) in enumerate(TASKS):
+        ok = 0
+        for d in days:
+            for j, mo in enumerate(months):
+                pred = int(np.argmax(logits_over(model, t.format(a=d, b=mo), m_ids)))
+                base_pred[(ti, d, j)] = pred
+                ok += pred == (j + off) % 12
         base_acc.append(ok / (len(days) * len(months)))
         print(f"  {t.format(a='D', b='M'):<44} offset {off:+d}  accuracy {base_acc[-1]:.2f}")
 
     hook = RotationHook(model, layer, args.hook)
     dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float32
     shifts = [-3, -2, -1, 0, 1, 2, 3]
+    n_tasks, n_cells = len(TASKS), len(days) * len(months)
     results = {}
 
     for cond, plane in (("month circle", (u, v)), ("PC3-PC4 control", pc_plane(Xm, 2, 3)),
                         ("PC5-PC6 control", pc_plane(Xm, 4, 5))):
         pu, pv = plane
-        month_tab = np.zeros((len(shifts), 12))
+        # per task, per rotation: distribution of the answer's shift relative to the model's own
+        # unrotated answer (primary), relative to the correct answer, and how often the answer is
+        # simply the input month (the "did not apply the offset" failure)
+        vs_base = np.zeros((n_tasks, len(shifts), 12))
+        vs_correct = np.zeros((n_tasks, len(shifts), 12))
+        echo = np.zeros((n_tasks, len(shifts)))
         weekday_changed = np.zeros(len(shifts))
-        n = 0
         for si, k in enumerate(shifts):
             R = rotation_matrix(pu, pv, dirn * k * step)
-            for t, off in TASKS:
+            for ti, (t, off) in enumerate(TASKS):
                 for d in days:
                     for j, mo in enumerate(months):
                         p = t.format(a=d, b=mo)
                         _, me = item_token_span(model, p, mo)
                         hook.set(R, [me - 1], centre, device, dtype)
                         pred = int(np.argmax(logits_over(model, p, m_ids, [(hook.name, hook)])))
-                        month_tab[si, (pred - (j + off)) % 12] += 1
-                        # does a month rotation disturb the weekday reading?
-                        pw = f"It was {d}, {mo}. The day of the week was"
-                        _, me2 = item_token_span(model, pw, mo)
-                        hook.set(R, [me2 - 1], centre, device, dtype)
-                        wd = int(np.argmax(logits_over(model, pw, d_ids, [(hook.name, hook)])))
-                        weekday_changed[si] += (WEEKDAYS.items[wd] != d)
-                        n += 1
-            month_tab[si] /= month_tab[si].sum()
+                        vs_base[ti, si, (pred - base_pred[(ti, d, j)]) % 12] += 1
+                        vs_correct[ti, si, (pred - (j + off)) % 12] += 1
+                        echo[ti, si] += pred == j
+                        if ti == 0:
+                            # does a month rotation disturb the weekday reading? (once per cell)
+                            pw = f"It was {d}, {mo}. The day of the week was"
+                            _, me2 = item_token_span(model, pw, mo)
+                            hook.set(R, [me2 - 1], centre, device, dtype)
+                            wd = int(np.argmax(logits_over(model, pw, d_ids, [(hook.name, hook)])))
+                            weekday_changed[si] += (WEEKDAYS.items[wd] != d)
         hook.R = None
-        on_target = [month_tab[si, k % 12] for si, k in enumerate(shifts)]
+        vs_base /= n_cells; vs_correct /= n_cells; echo /= n_cells
+        pooled = vs_base.mean(0)                                   # [shifts, 12]
         nz = [i for i, k in enumerate(shifts) if k != 0]
-        results[cond] = {"table": month_tab.tolist(),
-                         "on_target_nonzero": float(np.mean([on_target[i] for i in nz])),
-                         "weekday_disturbed": (weekday_changed / (n / len(shifts))).tolist()}
-        print(f"\n{cond}: month answer shifts by exactly k (k!=0) in "
-              f"{results[cond]['on_target_nonzero']:.3f} of trials (chance 1/12 = 0.083)")
+        n_nz = n_tasks * n_cells * len(nz)
+        hits = sum(pooled[i, shifts[i] % 12] for i in nz) * n_tasks * n_cells
+        lo, hi = wilson(hits, n_nz)
+        results[cond] = {"table": pooled.tolist(),
+                         "table_vs_correct": vs_correct.mean(0).tolist(),
+                         "per_task_vs_base": vs_base.tolist(),
+                         "per_task_vs_correct": vs_correct.tolist(),
+                         "per_task_echo_input": echo.tolist(),
+                         "on_target_nonzero": hits / n_nz, "on_target_nonzero_ci95": [lo, hi],
+                         "n_trials_nonzero": n_nz,
+                         "weekday_disturbed": (weekday_changed / n_cells).tolist()}
+        print(f"\n{cond}: month answer moves by exactly k (k!=0, vs unrotated answer) in "
+              f"{hits / n_nz:.3f} of {n_nz} trials [95% CI {lo:.3f}-{hi:.3f}] (chance 1/12 = 0.083)")
+        for ti, (t, off) in enumerate(TASKS):
+            print(f"    answer = input month, {t.format(a='D', b='M'):<40}: "
+                  + " ".join(f"{e:.2f}" for e in echo[ti]) + f"   (rotations {shifts})")
 
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
     names = list(results)
@@ -139,7 +168,7 @@ def main() -> None:
         im = ax.imshow(tab, cmap="Greys", vmin=0, vmax=max(0.5, tab.max()), aspect="auto")
         ax.set_xticks(range(0, 12, 2)); ax.set_yticks(range(len(shifts)))
         ax.set_yticklabels(shifts)
-        ax.set_xlabel("observed shift (months)"); ax.set_ylabel("rotation applied (months)")
+        ax.set_xlabel("shift vs the unrotated answer (months)"); ax.set_ylabel("rotation applied (months)")
         for si, k in enumerate(shifts):
             ax.add_patch(plt.Rectangle((k % 12 - 0.5, si - 0.5), 1, 1, fill=False, ec=ACCENT, lw=1.4))
         ax.set_title(cond, fontsize=9.5)
@@ -162,7 +191,7 @@ def main() -> None:
     path = ROOT / "figures" / f"rotate_month_{args.model}_L{layer}.png"
     fig.savefig(path, bbox_inches="tight")
     (ROOT / "data" / f"rotate_month_{args.model}_L{layer}.json").write_text(
-        json.dumps({"baseline": base_acc, "shifts": shifts, "results": results}, indent=2,
+        json.dumps({"tasks": TASKS, "weekdays": days, "baseline": base_acc, "shifts": shifts, "results": results}, indent=2,
                    default=float))
     print(f"\nfigure -> {path}")
 

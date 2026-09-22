@@ -15,10 +15,21 @@ Three weaknesses in the first pass, addressed here.
                           additivity, destroys the circularity of each factor.
               A torus needs to beat both.
 
+  power       a null only means something if the test could have detected the real thing. A
+              synthetic ideal torus with the SAME weekday/month variance split is pushed through
+              the identical pipeline. At the last token the split is roughly 3% weekday to 96%
+              month, and for a torus that lopsided the small weekday loop falls below the joint-
+              cloud nulls even when it is perfect. So the joint barcode alone cannot rule a torus
+              in or out for the minor factor. Two tests that do have power are added:
+                per-factor  is each factor's MAIN EFFECT (7 or 12 points) a loop, against a
+                            covariance-matched null of the same size?
+                dominant    does the joint cloud show the dominant factor's loop at all?
+                            A synthetic torus with this split does, strongly.
+
   depth       is the product structure inherited from the embeddings, as the single circle
               largely was, or built by the network? Sweep every layer.
 
-  python scripts/07_torus_validation.py --model gemma-2-2b --dtype bfloat16
+  python scripts/07_torus_validation.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -120,9 +131,37 @@ def nulls(X: np.ndarray, a_idx, b_idx, n_draws: int, seed: int) -> dict:
             "additive_random": {"first": q(a1), "second": q(a2)}}
 
 
+def synthetic_torus(a_idx, b_idx, factor_a: float, factor_b: float, interaction: float,
+                    d: int = 200, seed: int = 0) -> np.ndarray:
+    """An ideal torus with a given variance split: two perfect, evenly spaced, orthogonal circles
+    carrying `factor_a` and `factor_b` of the variance, plus isotropic noise carrying the
+    interaction share. The positive control: what the pipeline reports for a real torus."""
+    rng = np.random.default_rng(seed)
+    ta = 2 * np.pi * a_idx / (a_idx.max() + 1)
+    tb = 2 * np.pi * b_idx / (b_idx.max() + 1)
+    X = np.zeros((len(a_idx), d))
+    X[:, 0], X[:, 1] = np.sqrt(factor_a) * np.cos(ta), np.sqrt(factor_a) * np.sin(ta)
+    X[:, 2], X[:, 3] = np.sqrt(factor_b) * np.cos(tb), np.sqrt(factor_b) * np.sin(tb)
+    return X + rng.standard_normal(X.shape) * np.sqrt(interaction / d)
+
+
+def loop_vs_null(W: np.ndarray, n_draws: int, seed: int) -> dict:
+    """Longest 1-cycle of a small point set (one factor's main effect, 7 or 12 points) against
+    a covariance-matched Gaussian null of the same size. This asks 'is this factor a loop?'
+    without the other factor's much larger variance swamping the answer."""
+    rng = np.random.default_rng(seed)
+    Wc = W - W.mean(0, keepdims=True)
+    _, S, Vt = np.linalg.svd(Wc, full_matrices=False)
+    scale = S / np.sqrt(len(W))
+    real = h1_gap(W)[0]
+    draws = [h1_gap((rng.standard_normal((len(W), len(S))) * scale) @ Vt)[0] for _ in range(n_draws)]
+    return {"h1": real, "null_mean": float(np.mean(draws)), "null_p95": float(np.percentile(draws, 95)),
+            "p_value": float((1 + sum(x >= real for x in draws)) / (1 + n_draws))}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
@@ -161,8 +200,35 @@ def main() -> None:
               f"{nl['gaussian']['second']['p95']:.3f}  (95th pct)")
         print(f"      null, additive random levels: {nl['additive_random']['first']['p95']:.3f}, "
               f"{nl['additive_random']['second']['p95']:.3f}")
-        verdict = ("TORUS" if l2 > nl["gaussian"]["second"]["p95"]
-                   and l2 > nl["additive_random"]["second"]["p95"] else "not clear")
+        # positive control: the same pipeline on an ideal torus with this variance split
+        syn = synthetic_torus(a_idx, b_idx, dec["factor_a"], dec["factor_b"],
+                              max(dec["interaction"], 1e-4))
+        s1, s2 = h1_gap(syn)
+        snl = nulls(syn, a_idx, b_idx, max(args.n_null // 2, 20), seed=1)
+        syn_old_rule = (s2 > snl["gaussian"]["second"]["p95"]
+                        and s2 > snl["additive_random"]["second"]["p95"])
+        # per-factor loops, each factor's main effect on its own
+        fa_loop = loop_vs_null(Wa, args.n_null, seed=2)
+        fb_loop = loop_vs_null(Wb, args.n_null, seed=3)
+        dominant_seen = l1 > max(nl["gaussian"]["first"]["p95"], nl["additive_random"]["first"]["p95"])
+        out["positions"][pos].update({
+            "positive_control": {"h1": [s1, s2], "nulls": snl,
+                                 "passes_two_loop_rule": bool(syn_old_rule)},
+            "weekday_main_effect_loop": fa_loop, "month_main_effect_loop": fb_loop,
+            "dominant_loop_above_null": bool(dominant_seen),
+        })
+        print(f"    positive control (ideal torus, same split): 1-cycles {s1:.3f}, {s2:.3f}; "
+              f"passes the two-loop rule: {syn_old_rule}")
+        print(f"    weekday main effect alone: longest loop {fa_loop['h1']:.3f} "
+              f"(null p95 {fa_loop['null_p95']:.3f}, p = {fa_loop['p_value']:.3f})")
+        print(f"    month main effect alone:   longest loop {fb_loop['h1']:.3f} "
+              f"(null p95 {fb_loop['null_p95']:.3f}, p = {fb_loop['p_value']:.3f})")
+        # A torus needs both factors to be loops and the dominant loop to survive in the joint
+        # cloud. The two-loop rule on the joint cloud is reported but not used: the positive
+        # control shows it has no power for a split this lopsided.
+        both_loops = fa_loop["p_value"] < 0.05 and fb_loop["p_value"] < 0.05
+        verdict = ("consistent with a torus" if both_loops and dominant_seen else
+                   "not a torus" if not dominant_seen and not both_loops else "partial")
         print(f"      verdict: {verdict}")
         out["positions"][pos]["verdict"] = verdict
 
@@ -188,26 +254,31 @@ def main() -> None:
               f"min angle {ang.min():5.1f} deg  1-cycles {l1:.3f}, {l2:.3f}")
     out["depth_profile"] = prof
 
+    # save the numbers before any plotting, so a figure bug cannot lose a 25-minute run
+    (ROOT / "data" / f"torus_validation_{args.model}.json").write_text(
+        json.dumps(out, indent=2, default=float))
+
     # ------------------------------------------------------------------ figure
     fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
 
     ax = axes[0]
     pos_names = list(out["positions"])
     x = np.arange(len(pos_names))
-    for i, key in enumerate(("h1", None)):
-        pass
+    w = 0.35
     first = [out["positions"][p]["h1"][0] for p in pos_names]
+    syn_first = [out["positions"][p]["positive_control"]["h1"][0] for p in pos_names]
+    ax.plot(x - w / 2, syn_first, "o", mfc="none", mec=ACCENT, ms=8, mew=1.5,
+            label="ideal torus, same split")
     second = [out["positions"][p]["h1"][1] for p in pos_names]
     gnull = [out["positions"][p]["nulls"]["gaussian"]["second"]["p95"] for p in pos_names]
     anull = [out["positions"][p]["nulls"]["additive_random"]["second"]["p95"] for p in pos_names]
-    w = 0.35
     ax.bar(x - w / 2, first, w, color=ACCENT, edgecolor=DARK, label="longest 1-cycle")
     ax.bar(x + w / 2, second, w, color=GREY, edgecolor=DARK, label="second 1-cycle")
     ax.plot(x + w / 2, gnull, "_", color="k", ms=14, mew=2, label="null: matched Gaussian")
     ax.plot(x + w / 2, anull, "x", color="k", ms=7, mew=1.5, label="null: additive random")
     ax.set_xticks(x); ax.set_xticklabels([p.replace("_", "\n") for p in pos_names], fontsize=8)
     ax.set_ylabel("persistence")
-    ax.set_title("Two loops of similar length = torus", fontsize=9.5)
+    ax.set_title("Joint-cloud loops vs nulls and a positive control", fontsize=9.5)
     ax.legend(fontsize=7)
 
     ax = axes[1]
@@ -234,8 +305,6 @@ def main() -> None:
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     path = ROOT / "figures" / f"torus_validation_{args.model}.png"
     fig.savefig(path, bbox_inches="tight")
-    (ROOT / "data" / f"torus_validation_{args.model}.json").write_text(
-        json.dumps(out, indent=2, default=float))
     print(f"\nfigure -> {path}")
 
 

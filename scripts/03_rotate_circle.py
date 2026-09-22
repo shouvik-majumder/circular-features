@@ -7,10 +7,15 @@ model's answer advances by k days. Everything outside that 2D plane is left unto
   present  = a probe can read the day off the circle (step 1 showed this)
   used     = rotating the circle changes the answer by the matching amount
 
-Controls: the same rotation applied in a random 2D plane, and the shift you would get from
-shuffled angles. Both should do nothing.
+Controls: the same rotation in the PC3-PC4 and PC5-PC6 planes of the same item vectors (these
+displace the activation by a comparable amount, so they are the controls that count), and in
+random 2D planes (which barely displace it, reported for completeness).
 
-  python scripts/03_rotate_circle.py --model gemma-2-2b --dtype bfloat16 --layer 16
+The shift is measured against the model's OWN unrotated answer for that prompt, not against the
+correct answer. Otherwise baseline mistakes (one task is only 0.57 accurate) leak into the table
+and can masquerade as, or mask, a rotation effect. The old correct-answer table is kept alongside.
+
+  python scripts/03_rotate_circle.py --model gemma-2-2b-it --dtype bfloat16 --layer 16
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ from cf.intervene import (RotationHook, circle_basis, item_angles,  # noqa: E402
                           pc_plane, random_plane, rotation_matrix)
 from cf.model import MODELS, item_activations, item_token_span, load  # noqa: E402
 from cf.prompts import WEEKDAYS  # noqa: E402
+from cf.stats import wilson  # noqa: E402
 
 plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
                      "axes.spines.top": False, "axes.spines.right": False,
@@ -68,7 +74,7 @@ def day_logits(model, prompt: str, ids: list[int], fwd_hooks=None) -> np.ndarray
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
@@ -96,11 +102,13 @@ def main() -> None:
     # ---------------------------------------------------------------- baseline
     print("\nbaseline (no intervention):")
     baseline_ok = []
-    for template, offset in TASKS:
+    base_pred = {}                                   # (task index, day index) -> unrotated answer
+    for ti, (template, offset) in enumerate(TASKS):
         correct = 0
         for i, d in enumerate(days):
             p = template.format(item=d)
             pred = int(np.argmax(day_logits(model, p, ids)))
+            base_pred[(ti, i)] = pred
             correct += (pred == (i + offset) % 7)
         acc = correct / len(days)
         baseline_ok.append(acc)
@@ -124,27 +132,37 @@ def main() -> None:
             pu, pv = pc_plane(X, 4, 5)
         else:
             pu, pv = random_plane(len(u), rng)
-        table = np.zeros((len(shifts_k), 7))       # rotation k -> distribution of observed shift
+        # rotation k -> distribution of observed shift, relative to the unrotated answer (primary)
+        # and relative to the correct answer (kept for comparison with the first version)
+        table = np.zeros((len(shifts_k), 7))
+        table_vs_correct = np.zeros((len(shifts_k), 7))
         disp = []
         for ki, k in enumerate(shifts_k):
             R = rotation_matrix(pu, pv, dirn * k * step)
             disp.append(hook.displacement(X, R, centre))
-            for template, offset in TASKS:
+            for ti, (template, offset) in enumerate(TASKS):
                 for i, d in enumerate(days):
                     p = template.format(item=d)
                     _, end = item_token_span(model, p, d)
                     hook.set(R, [end - 1], centre, device, dtype)
                     pred = int(np.argmax(day_logits(model, p, ids, fwd_hooks=[(hook.name, hook)])))
-                    observed = (pred - (i + offset)) % 7
-                    table[ki, observed] += 1
-            table[ki] /= table[ki].sum()
-        results[cond] = {"table": table.tolist(), "displacement": float(np.mean(disp))}
-        on_target = [table[ki, k % 7] for ki, k in enumerate(shifts_k)]
-        print(f"\n{cond}: answer shifted by exactly k in "
-              f"{np.mean(on_target):.2f} of trials (chance 1/7 = 0.14), "
+                    table[ki, (pred - base_pred[(ti, i)]) % 7] += 1
+                    table_vs_correct[ki, (pred - (i + offset)) % 7] += 1
+        n_per_k = int(table[0].sum())
+        table /= n_per_k
+        table_vs_correct /= n_per_k
+        nz = [ki for ki, k in enumerate(shifts_k) if k != 0]
+        hits = sum(table[ki, shifts_k[ki] % 7] * n_per_k for ki in nz)
+        n_nz = n_per_k * len(nz)
+        lo, hi = wilson(hits, n_nz)
+        results[cond] = {"table": table.tolist(), "table_vs_correct": table_vs_correct.tolist(),
+                         "displacement": float(np.mean(disp)), "n_per_shift": n_per_k,
+                         "on_target_nonzero": hits / n_nz, "on_target_nonzero_ci95": [lo, hi]}
+        print(f"\n{cond}: answer moved by exactly k (k != 0) in {hits / n_nz:.3f} of {n_nz} trials "
+              f"[95% CI {lo:.3f}-{hi:.3f}] (chance 1/7 = 0.143), "
               f"mean displacement {np.mean(disp):.1f}")
 
-    hook.set(None, [], centre, device, dtype) if False else setattr(hook, "R", None)
+    hook.R = None
 
     # --------------------------------------------------------------- figure
     rand_tables = np.array([results[c]["table"] for c in results if c.startswith("random")])
@@ -161,7 +179,7 @@ def main() -> None:
         im = ax.imshow(tab, cmap="Greys", vmin=0, vmax=1, aspect="auto")
         ax.set_xticks(range(7)); ax.set_xticklabels(range(7))
         ax.set_yticks(range(len(shifts_k))); ax.set_yticklabels(shifts_k)
-        ax.set_xlabel("observed shift in the answer (days)")
+        ax.set_xlabel("shift vs the unrotated answer (days)")
         ax.set_ylabel("rotation applied (days)")
         ax.set_title(title, fontsize=9.5)
         for ki, k in enumerate(shifts_k):

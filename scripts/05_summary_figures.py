@@ -11,7 +11,7 @@ Three views that make the numbers in step 4 visible:
                 two factors are independent coordinates", not as "the cloud is a torus".
   helix         day of month projected onto its 31-cycle plane and its linear direction.
 
-  python scripts/05_summary_figures.py --model gemma-2-2b --dtype bfloat16
+  python scripts/05_summary_figures.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ DARK, GREY, ACCENT = "0.25", "0.65", "#1f77b4"
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])

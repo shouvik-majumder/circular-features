@@ -17,7 +17,7 @@ This measures, for both weekdays (step 3, which worked) and months (step 8, whic
   displacement      how far a k-step rotation actually moves the activation, in L2
   relative          that displacement as a fraction of the activation norm
 
-  python scripts/09_intervention_diagnostic.py --model gemma-2-2b --dtype bfloat16
+  python scripts/09_intervention_diagnostic.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def probe(label, X_fit, X_use, step_frac, rng):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])

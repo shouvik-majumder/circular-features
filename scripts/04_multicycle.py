@@ -14,7 +14,7 @@ Three experiments:
   control  The same analyses on an arbitrary pairing (animals x objects), where no product
            structure should appear.
 
-  python scripts/04_multicycle.py --model gemma-2-2b --dtype bfloat16
+  python scripts/04_multicycle.py --model gemma-2-2b-it --dtype bfloat16
 """
 from __future__ import annotations
 
@@ -43,6 +43,8 @@ plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
                      "legend.frameon": False, "figure.facecolor": "white"})
 DARK, GREY, ACCENT = "0.25", "0.65", "#1f77b4"
 
+# Caution: Gemma tokenises numbers digit by digit, so for Gemma the item vector is read at the
+# units digit and 1-9 differ in length from 10-31. See 10_day_of_month.py for the clean GPT-2 run.
 # Neutral numeric contexts. An earlier version used "the {item}th", which is ungrammatical for
 # most values ("1th", "2th") and produced a spurious period-3 component from the suffix pattern.
 DAY_NUMBERS = ItemSet(
@@ -79,7 +81,7 @@ def pair_activations(model, name, a, b, template, layer, hook, device):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--model", default="gemma-2-2b-it", choices=sorted(MODELS))
     ap.add_argument("--layer", type=int, default=None)
     ap.add_argument("--hook", default="resid_post")
     ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])

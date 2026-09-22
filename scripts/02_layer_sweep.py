@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from cf.geometry import circularity, gaussian_null, shuffle_null  # noqa: E402
-from cf.model import MODELS, item_activations, load  # noqa: E402
+from cf.model import MODELS, layer_sweep, load  # noqa: E402
 from cf.prompts import DEFAULT_ORDER, SETS  # noqa: E402
 
 plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
@@ -57,12 +57,12 @@ def main() -> None:
     for name in args.sets:
         s = SETS[name]
         prof = {"kind": s.kind, "radial_cv": [], "order_score": [], "pc12_variance": []}
+        sweep = layer_sweep(model, s, args.hook)          # every layer in one pass per prompt
         for L in range(n_layers):
-            X, items = item_activations(model, s, L, args.hook, device=device)
-            m = circularity(X)
+            m = circularity(sweep[L])
             for k in ("radial_cv", "order_score", "pc12_variance"):
                 prof[k].append(m[k])
-        X, items = item_activations(model, s, n_layers - 1, args.hook, device=device)
+        X, items = sweep[n_layers - 1], list(s.items)
         prof["shuffle_null_p95"] = shuffle_null(X)["p95"]
         prof["gaussian_null"] = gaussian_null(len(items), X.shape[1])
         out[name] = prof

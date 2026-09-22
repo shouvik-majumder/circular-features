@@ -1,5 +1,5 @@
 {
-  "model": "gemma-2-2b",
+  "model": "gemma-2-2b-it",
   "layer": 16,
   "hook": "resid_post",
   "results": {
@@ -58,6 +58,11 @@
         "order_mean": 0.4642857142857143,
         "order_p95": 0.5714285714285714,
         "pc12_mean": 0.3542601997310482
+      },
+      "matched_gaussian_null": {
+        "radial_cv_mean": 0.42354118298209203,
+        "radial_cv_p05": 0.2411267255865358,
+        "pc12_mean": 0.8031214850158134
       }
     },
     "months": {
@@ -140,6 +145,11 @@
         "order_mean": 0.2841666666666667,
         "order_p95": 0.4166666666666667,
         "pc12_mean": 0.20076189642438422
+      },
+      "matched_gaussian_null": {
+        "radial_cv_mean": 0.45938397703503353,
+        "radial_cv_p05": 0.31568376790984887,
+        "pc12_mean": 0.57188877407788
       }
     },
     "number words": {
@@ -212,6 +222,11 @@
         "order_mean": 0.33549999999999996,
         "order_p95": 0.5,
         "pc12_mean": 0.24185876943405632
+      },
+      "matched_gaussian_null": {
+        "radial_cv_mean": 0.45490154086217305,
+        "radial_cv_p05": 0.2885850343286002,
+        "pc12_mean": 0.660052835494298
       }
     },
     "animals (control)": {
@@ -269,6 +284,11 @@
         "order_mean": 0.4642857142857143,
         "order_p95": 0.5714285714285714,
         "pc12_mean": 0.3542601997310482
+      },
+      "matched_gaussian_null": {
+        "radial_cv_mean": 0.40817743398540196,
+        "radial_cv_p05": 0.232010746541573,
+        "pc12_mean": 0.7693347339104829
       }
     },
     "objects (control)": {
@@ -326,6 +346,11 @@
         "order_mean": 0.4642857142857143,
         "order_p95": 0.5714285714285714,
         "pc12_mean": 0.3542601997310482
+      },
+      "matched_gaussian_null": {
+        "radial_cv_mean": 0.40767348976191137,
+        "radial_cv_p05": 0.2216951442741742,
+        "pc12_mean": 0.7667092836287019
       }
     }
   }
