@@ -1,0 +1,2 @@
+Loaded pretrained model google/gemma-2-2b-it into HookedTransformer
+=== layer 16: 5 templates per pair, three read positions ===

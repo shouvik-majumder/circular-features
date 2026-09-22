@@ -91,6 +91,67 @@ def spectrum_null(X: np.ndarray, values: np.ndarray, periods: list[float], linea
             for k, v in draws.items()}
 
 
+def harmonic_decomposition(X: np.ndarray, n_items: int | None = None, seed: int = 0,
+                           n_draws: int = 200) -> dict:
+    """Is the loop a *circle*, or a deformed one? Decompose it into harmonics.
+
+    For n items in cyclic order, regress the item vectors on cos/sin at harmonic m, for
+    m = 1 .. floor(n/2). A perfect circle in some plane is pure harmonic 1: going once round the
+    item order sweeps exactly one revolution at constant radius. Any deformation - a squashed
+    ellipse, uneven spacing, a kink, an out-of-plane wobble - shows up as power at m >= 2.
+
+    Returns the fraction of explainable variance in each harmonic, so `fraction[1]` near 1 means
+    "a genuine circle" and a long tail means "a loop that is only roughly circular".
+
+    The null shuffles the item order, which *does* change this measure (unlike topology, where
+    relabelling leaves the point cloud untouched), because harmonics are defined relative to the
+    ordering.
+    """
+    n = n_items or len(X)
+    Xc = X - X.mean(0, keepdims=True)
+    k = np.arange(n)
+
+    def power(order: np.ndarray) -> np.ndarray:
+        Y = Xc[order]
+        out = []
+        for m in range(1, n // 2 + 1):
+            D = np.stack([np.cos(2 * np.pi * m * k / n), np.sin(2 * np.pi * m * k / n)], axis=1)
+            W, *_ = np.linalg.lstsq(D, Y, rcond=None)
+            out.append(float(((D @ W) ** 2).sum()))
+        return np.array(out)
+
+    p = power(np.arange(n))
+    total = float((Xc ** 2).sum())
+    rng = np.random.default_rng(seed)
+    null = np.stack([power(rng.permutation(n)) for _ in range(n_draws)])
+    return {
+        "harmonic_power": (p / total).tolist(),
+        "fraction_in_fundamental": float(p[0] / max(p.sum(), 1e-12)),
+        "null_p95": (np.percentile(null, 95, axis=0) / total).tolist(),
+        "explained_by_all_harmonics": float(p.sum() / total),
+    }
+
+
+def ellipse_axis_ratio(X: np.ndarray) -> float:
+    """Ratio of the two principal spreads in the best-fitting plane. 1.0 = round, 0 = a line."""
+    Xc = X - X.mean(0, keepdims=True)
+    s = np.linalg.svd(Xc, compute_uv=False)
+    return float(s[1] / max(s[0], 1e-12))
+
+
+def angular_gaps(X: np.ndarray) -> dict:
+    """Spacing of consecutive items around the loop. A regular polygon has equal gaps."""
+    Xc = X - X.mean(0, keepdims=True)
+    _, _, Vt = np.linalg.svd(Xc, full_matrices=False)
+    xy = Xc @ Vt[:2].T
+    ang = np.unwrap(np.arctan2(xy[:, 1], xy[:, 0]))
+    gaps = np.diff(np.append(ang, ang[0] + 2 * np.pi * np.sign(np.diff(ang).sum())))
+    gaps = np.abs(gaps)
+    ideal = 2 * np.pi / len(X)
+    return {"gaps_deg": np.degrees(gaps).tolist(), "ideal_deg": float(np.degrees(ideal)),
+            "cv_of_gaps": float(np.std(gaps) / max(np.mean(gaps), 1e-12))}
+
+
 # -------------------------------------------------------------- 2. two factors
 def two_way_decomposition(X: np.ndarray, a_idx: np.ndarray, b_idx: np.ndarray) -> dict:
     """Split the variance of a 2-factor item set into main effects and interaction.

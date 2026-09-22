@@ -1,0 +1,234 @@
+"""Step 7: does the torus survive proper controls?
+
+Three weaknesses in the first pass, addressed here.
+
+  denser      one prompt per (weekday, month) pair, read only at the final token. Now several
+              templates per pair, and read at the weekday token, the month token and the final
+              token separately. The last-token view compresses each factor's angular range, so
+              it was the worst place to look.
+
+  real nulls  a label permutation cannot test topology: shuffling names leaves the point cloud,
+              and therefore the barcode, untouched. Two nulls that do perturb the cloud:
+                gaussian  84 points from a Gaussian with the same covariance. Keeps the
+                          second-order structure (PCA looks similar), destroys the product.
+                additive  the same additive model but with random vectors per level. Keeps
+                          additivity, destroys the circularity of each factor.
+              A torus needs to beat both.
+
+  depth       is the product structure inherited from the embeddings, as the single circle
+              largely was, or built by the network? Sweep every layer.
+
+  python scripts/07_torus_validation.py --model gemma-2-2b --dtype bfloat16
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import matplotlib
+import numpy as np
+import torch
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from cf.model import MODELS, item_token_span, load  # noqa: E402
+from cf.periodic import (betti_numbers, circle_plane_of, subspace_angles,  # noqa: E402
+                         two_way_decomposition)
+from cf.prompts import MONTHS, WEEKDAYS  # noqa: E402
+
+plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
+                     "axes.spines.top": False, "axes.spines.right": False,
+                     "legend.frameon": False, "figure.facecolor": "white"})
+DARK, GREY, ACCENT = "0.25", "0.65", "#1f77b4"
+
+JOINT_TEMPLATES = [
+    "The date is {a}, {b} the 3rd",
+    "We met on {a} in {b}",
+    "It happened on a {a} in {b}",
+    "{a}, {b} 12, was a good day",
+    "Scheduled for {a}, {b}",
+]
+
+
+@torch.no_grad()
+def joint_activations(model, layer: int, hook: str, device: str):
+    """Activations for every (weekday, month) pair at three read positions, averaged over
+    templates. Returns dict position -> [84, d], plus the factor index arrays."""
+    name = f"blocks.{layer}.hook_{hook}"
+    acc = {k: {} for k in ("weekday_token", "month_token", "last_token")}
+    for i, d in enumerate(WEEKDAYS.items):
+        for j, mo in enumerate(MONTHS.items):
+            for t in JOINT_TEMPLATES:
+                p = t.format(a=d, b=mo)
+                toks = model.to_tokens(p, prepend_bos=True)
+                _, cache = model.run_with_cache(toks, names_filter=[name])
+                A = cache[name][0].float().cpu().numpy()
+                _, de = item_token_span(model, p, d)
+                _, me = item_token_span(model, p, mo)
+                for key, idx in (("weekday_token", de - 1), ("month_token", me - 1),
+                                 ("last_token", A.shape[0] - 1)):
+                    acc[key].setdefault((i, j), []).append(A[idx])
+    keys = [(i, j) for i in range(len(WEEKDAYS.items)) for j in range(len(MONTHS.items))]
+    out = {k: np.stack([np.mean(acc[k][key], axis=0) for key in keys]) for k in acc}
+    a_idx = np.array([k[0] for k in keys])
+    b_idx = np.array([k[1] for k in keys])
+    return out, a_idx, b_idx
+
+
+def h1_gap(X: np.ndarray) -> tuple[float, float]:
+    """Lifetimes of the two longest 1-cycles. A torus needs two of comparable length."""
+    t = betti_numbers(X, maxdim=1)
+    lives = t.get("H1", {}).get("top_lifetimes", [])
+    return (float(lives[0]) if lives else 0.0, float(lives[1]) if len(lives) > 1 else 0.0)
+
+
+def nulls(X: np.ndarray, a_idx, b_idx, n_draws: int, seed: int) -> dict:
+    """Two cloud-perturbing nulls for the two-loop signature."""
+    rng = np.random.default_rng(seed)
+    Xc = X - X.mean(0, keepdims=True)
+    # keep only the leading subspace so the Gaussian draw is well conditioned
+    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    k = int(np.searchsorted(np.cumsum(S**2) / (S**2).sum(), 0.99) + 1)
+    basis, scale = Vt[:k], S[:k] / np.sqrt(len(X))
+
+    g1, g2, a1, a2 = [], [], [], []
+    for _ in range(n_draws):
+        G = (rng.standard_normal((len(X), k)) * scale) @ basis
+        l1, l2 = h1_gap(G)
+        g1.append(l1); g2.append(l2)
+        # additive model, random vectors per level: additive but not circular
+        fa = rng.standard_normal((a_idx.max() + 1, k)) @ basis
+        fb = rng.standard_normal((b_idx.max() + 1, k)) @ basis
+        A = fa[a_idx] + fb[b_idx]
+        A = A / np.linalg.norm(A - A.mean(0), axis=1).mean() * np.linalg.norm(Xc, axis=1).mean()
+        l1, l2 = h1_gap(A)
+        a1.append(l1); a2.append(l2)
+    q = lambda v: {"mean": float(np.mean(v)), "p95": float(np.percentile(v, 95))}
+    return {"gaussian": {"first": q(g1), "second": q(g2)},
+            "additive_random": {"first": q(a1), "second": q(a2)}}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="gemma-2-2b", choices=sorted(MODELS))
+    ap.add_argument("--layer", type=int, default=None)
+    ap.add_argument("--hook", default="resid_post")
+    ap.add_argument("--dtype", default="bfloat16", choices=["float32", "bfloat16"])
+    ap.add_argument("--n-null", type=int, default=100)
+    ap.add_argument("--layers", nargs="*", type=int, default=None, help="layers for the sweep")
+    args = ap.parse_args()
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    layer = args.layer if args.layer is not None else MODELS[args.model][1]
+    model = load(args.model, device=device, dtype=args.dtype)
+    out = {"model": args.model, "layer": layer, "templates": JOINT_TEMPLATES}
+
+    # ------------------------------------------- 1 + 2: read positions and nulls
+    print(f"=== layer {layer}: {len(JOINT_TEMPLATES)} templates per pair, three read positions ===")
+    acts, a_idx, b_idx = joint_activations(model, layer, args.hook, device)
+    out["positions"] = {}
+    for pos, X in acts.items():
+        dec = two_way_decomposition(X, a_idx, b_idx)
+        Wa = np.stack([X[a_idx == i].mean(0) for i in range(a_idx.max() + 1)])
+        Wb = np.stack([X[b_idx == j].mean(0) for j in range(b_idx.max() + 1)])
+        ang = subspace_angles(circle_plane_of(Wa), circle_plane_of(Wb))
+        l1, l2 = h1_gap(X)
+        nl = nulls(X, a_idx, b_idx, args.n_null, seed=0)
+        out["positions"][pos] = {
+            "additive_r2": dec["additive_model_r2"], "interaction": dec["interaction"],
+            "factor_a": dec["factor_a"], "factor_b": dec["factor_b"],
+            "principal_angles_deg": ang.tolist(), "h1": [l1, l2], "nulls": nl,
+        }
+        print(f"\n  read at {pos}")
+        print(f"    additive R^2 {dec['additive_model_r2']:.3f}  interaction {dec['interaction']:.3f}"
+              f"  angles {np.round(ang, 1)} deg")
+        print(f"    two longest 1-cycles: {l1:.3f}, {l2:.3f}")
+        print(f"      null, matched Gaussian      : {nl['gaussian']['first']['p95']:.3f}, "
+              f"{nl['gaussian']['second']['p95']:.3f}  (95th pct)")
+        print(f"      null, additive random levels: {nl['additive_random']['first']['p95']:.3f}, "
+              f"{nl['additive_random']['second']['p95']:.3f}")
+        verdict = ("TORUS" if l2 > nl["gaussian"]["second"]["p95"]
+                   and l2 > nl["additive_random"]["second"]["p95"] else "not clear")
+        print(f"      verdict: {verdict}")
+        out["positions"][pos]["verdict"] = verdict
+
+    # ------------------------------------------------------- 3: depth profile
+    layers = args.layers or list(range(0, model.cfg.n_layers, 2))
+    print(f"\n=== depth sweep over layers {layers} (read at the weekday token) ===")
+    prof = {"layer": [], "additive_r2": [], "interaction": [], "angle_min": [],
+            "h1_first": [], "h1_second": []}
+    for L in layers:
+        a, ai, bi = joint_activations(model, L, args.hook, device)
+        X = a["weekday_token"]
+        dec = two_way_decomposition(X, ai, bi)
+        Wa = np.stack([X[ai == i].mean(0) for i in range(ai.max() + 1)])
+        Wb = np.stack([X[bi == j].mean(0) for j in range(bi.max() + 1)])
+        ang = subspace_angles(circle_plane_of(Wa), circle_plane_of(Wb))
+        l1, l2 = h1_gap(X)
+        for k, v in (("layer", L), ("additive_r2", dec["additive_model_r2"]),
+                     ("interaction", dec["interaction"]), ("angle_min", float(ang.min())),
+                     ("h1_first", l1), ("h1_second", l2)):
+            prof[k].append(v)
+        print(f"  layer {L:2d}: additive R^2 {dec['additive_model_r2']:.3f}  "
+              f"min angle {ang.min():5.1f} deg  1-cycles {l1:.3f}, {l2:.3f}")
+    out["depth_profile"] = prof
+
+    # ------------------------------------------------------------------ figure
+    fig, axes = plt.subplots(1, 3, figsize=(13, 3.8))
+
+    ax = axes[0]
+    pos_names = list(out["positions"])
+    x = np.arange(len(pos_names))
+    for i, key in enumerate(("h1", None)):
+        pass
+    first = [out["positions"][p]["h1"][0] for p in pos_names]
+    second = [out["positions"][p]["h1"][1] for p in pos_names]
+    gnull = [out["positions"][p]["nulls"]["gaussian"]["second"]["p95"] for p in pos_names]
+    anull = [out["positions"][p]["nulls"]["additive_random"]["second"]["p95"] for p in pos_names]
+    w = 0.35
+    ax.bar(x - w / 2, first, w, color=ACCENT, edgecolor=DARK, label="longest 1-cycle")
+    ax.bar(x + w / 2, second, w, color=GREY, edgecolor=DARK, label="second 1-cycle")
+    ax.plot(x + w / 2, gnull, "_", color="k", ms=14, mew=2, label="null: matched Gaussian")
+    ax.plot(x + w / 2, anull, "x", color="k", ms=7, mew=1.5, label="null: additive random")
+    ax.set_xticks(x); ax.set_xticklabels([p.replace("_", "\n") for p in pos_names], fontsize=8)
+    ax.set_ylabel("persistence")
+    ax.set_title("Two loops of similar length = torus", fontsize=9.5)
+    ax.legend(fontsize=7)
+
+    ax = axes[1]
+    ax.plot(prof["layer"], prof["additive_r2"], "-o", ms=4, color=ACCENT, label="additive $R^2$")
+    ax.plot(prof["layer"], prof["interaction"], "--s", ms=4, color=GREY, label="interaction")
+    ax.set_xlabel("layer"); ax.set_ylabel("fraction of variance")
+    ax.set_ylim(0, 1.05)
+    ax.set_title("Is the product structure built with depth?", fontsize=9.5)
+    ax.legend(fontsize=8)
+
+    ax = axes[2]
+    ax.plot(prof["layer"], prof["h1_first"], "-o", ms=4, color=ACCENT, label="longest 1-cycle")
+    ax.plot(prof["layer"], prof["h1_second"], "--s", ms=4, color=GREY, label="second 1-cycle")
+    ax2 = ax.twinx()
+    ax2.plot(prof["layer"], prof["angle_min"], ":^", ms=4, color=DARK, label="min plane angle")
+    ax2.set_ylabel("smallest principal angle (deg)")
+    ax2.set_ylim(0, 95)
+    ax.set_xlabel("layer"); ax.set_ylabel("persistence")
+    ax.set_title("Loops and independence across depth", fontsize=9.5)
+    ax.legend(fontsize=8, loc="upper left"); ax2.legend(fontsize=8, loc="lower right")
+
+    fig.suptitle(f"{args.model}, hook_{args.hook}: does the weekday x month torus hold up?",
+                 fontsize=10, y=1.0)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    path = ROOT / "figures" / f"torus_validation_{args.model}.png"
+    fig.savefig(path, bbox_inches="tight")
+    (ROOT / "data" / f"torus_validation_{args.model}.json").write_text(
+        json.dumps(out, indent=2, default=float))
+    print(f"\nfigure -> {path}")
+
+
+if __name__ == "__main__":
+    main()
