@@ -2,11 +2,14 @@
 
 Three views that make the numbers in step 4 visible:
 
-  torus grid   every (weekday, month) pair placed by its angle on each of the two circles.
-               If the joint representation is a product, this is a regular lattice.
-  torus 3D     the same points drawn on a torus, radius from the month angle, tube from the
-               weekday angle. This is a rendering of the fitted structure, not a fit itself.
-  helix        day of month projected onto its 31-cycle plane and its linear direction.
+  main effects  the fitted weekday and month main effects, each in its own best plane.
+  torus 3D      the same points drawn on a torus, radius from the month angle, tube from the
+                weekday angle. IMPORTANT: this is a rendering of two fitted angles onto a torus
+                we drew ourselves. Any additive two-factor representation produces this picture,
+                whatever its real topology. Step 7 shows the topology is NOT toroidal
+                (persistence 0.039/0.035 against nulls at 0.23/0.30), so read the panel as "the
+                two factors are independent coordinates", not as "the cloud is a torus".
+  helix         day of month projected onto its 31-cycle plane and its linear direction.
 
   python scripts/05_summary_figures.py --model gemma-2-2b --dtype bfloat16
 """
@@ -99,7 +102,7 @@ def main() -> None:
     ax.set_title("Additive main effects: weekday (blue), month (black).\n"
                  "Ordered loops, but less clean than in single-factor prompts.", fontsize=9.5)
 
-    # ---- panel 2: the torus
+    # ---- panel 2: the two factors as independent coordinates, drawn on a torus we supply
     ax = fig.add_subplot(1, 3, 2, projection="3d")
     R, r = 3.0, 1.0
     x = (R + r * np.cos(th_w)) * np.cos(th_m)
@@ -110,7 +113,8 @@ def main() -> None:
                     r * np.sin(tu), color="0.9", alpha=0.25, linewidth=0, shade=False)
     ax.scatter(x, y, z, c=mi, cmap="twilight", s=22, depthshade=False)
     ax.set_box_aspect((1, 1, 0.45)); ax.set_axis_off()
-    ax.set_title("Weekday around the tube,\nmonth around the ring", fontsize=9.5)
+    ax.set_title("Two independent coordinates, drawn on a torus.\n"
+                 "The surface is imposed, not measured (see step 7).", fontsize=9.5)
 
     # ---- panel 3: the helix for day of month
     from importlib import import_module

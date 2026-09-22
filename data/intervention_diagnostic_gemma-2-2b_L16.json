@@ -1,0 +1,100 @@
+{
+  "model": "gemma-2-2b",
+  "layer": 16,
+  "months_single_fit": {
+    "circle": {
+      "radius_in_fitting_prompts": 44.83720397949219,
+      "radius_in_use_prompts": 45.42189407348633,
+      "displacement_k1_k2_k3": [
+        23.512100489794094,
+        45.421890193132974,
+        64.23625314227627
+      ],
+      "relative_displacement_k1": 0.0975400060415268
+    },
+    "PC3-PC4": {
+      "radius_in_fitting_prompts": 32.165218353271484,
+      "radius_in_use_prompts": 35.26475143432617,
+      "displacement_k1_k2_k3": [
+        18.25437759579911,
+        35.26474955196294,
+        49.87188710413255
+      ],
+      "relative_displacement_k1": 0.07572832703590393
+    },
+    "PC5-PC6": {
+      "radius_in_fitting_prompts": 24.930686950683594,
+      "radius_in_use_prompts": 26.2047119140625,
+      "displacement_k1_k2_k3": [
+        13.564558149033699,
+        26.204714130108318,
+        37.05906225697708
+      ],
+      "relative_displacement_k1": 0.05627259984612465
+    }
+  },
+  "months_joint_fit": {
+    "circle": {
+      "radius_in_fitting_prompts": 50.98948669433594,
+      "radius_in_use_prompts": 50.98948669433594,
+      "displacement_k1_k2_k3": [
+        26.394102032260097,
+        50.989489631576866,
+        72.11002777793799
+      ],
+      "relative_displacement_k1": 0.10949599742889404
+    },
+    "PC3-PC4": {
+      "radius_in_fitting_prompts": 37.5571174621582,
+      "radius_in_use_prompts": 37.5571174621582,
+      "displacement_k1_k2_k3": [
+        19.440993953599843,
+        37.5571162149779,
+        53.11378298758874
+      ],
+      "relative_displacement_k1": 0.08065101504325867
+    },
+    "PC5-PC6": {
+      "radius_in_fitting_prompts": 28.48252296447754,
+      "radius_in_use_prompts": 28.48252296447754,
+      "displacement_k1_k2_k3": [
+        14.74363971348569,
+        28.482524740460338,
+        40.280372773307974
+      ],
+      "relative_displacement_k1": 0.06116402521729469
+    }
+  },
+  "weekdays": {
+    "circle": {
+      "radius_in_fitting_prompts": 49.14521026611328,
+      "radius_in_use_prompts": 61.175926208496094,
+      "displacement_k1_k2_k3": [
+        53.08647780305222,
+        95.65852767359785,
+        119.28423298032469
+      ],
+      "relative_displacement_k1": 0.17636428773403168
+    },
+    "PC3-PC4": {
+      "radius_in_fitting_prompts": 30.958593368530273,
+      "radius_in_use_prompts": 35.14922332763672,
+      "displacement_k1_k2_k3": [
+        30.501351748126762,
+        54.96153671033785,
+        68.53591524426274
+      ],
+      "relative_displacement_k1": 0.10133181512355804
+    },
+    "PC5-PC6": {
+      "radius_in_fitting_prompts": 22.515104293823242,
+      "radius_in_use_prompts": 24.08292007446289,
+      "displacement_k1_k2_k3": [
+        20.898374790878627,
+        37.65757018194073,
+        46.958221945331886
+      ],
+      "relative_displacement_k1": 0.06942873448133469
+    }
+  }
+}

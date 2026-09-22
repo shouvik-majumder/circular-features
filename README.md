@@ -44,6 +44,7 @@ from `D:\dev\ESR\.env`.
 | `06_deformation.py` | Harmonics, ellipse axis ratio, angular gaps: circle or deformed loop? | ~3 min |
 | `07_torus_validation.py` | Denser sampling, three read positions, cloud-perturbing nulls, depth sweep | ~25 min |
 | `08_rotate_month.py` | Rotate the month subspace inside a full date prompt | ~30 min |
+| `09_intervention_diagnostic.py` | Did the rotation actually perturb the activation? | ~2 min |
 
 ```powershell
 python scripts/01_find_circles.py                                  # gpt2, layer 7
@@ -219,6 +220,58 @@ Two methodological notes, both mistakes made and then caught here:
 So the honest statement is: two deformed loops, written additively into near-orthogonal subspaces,
 with no toroidal topology. Additivity plus per-factor circularity is *necessary* for a torus but
 not, at this sampling density and this degree of deformation, sufficient to produce one.
+
+## Step 8: the month circle does not steer month arithmetic
+
+Step 3 rotated the weekday circle in a single-factor prompt and the answer moved. This asks the
+harder version: in a prompt naming both a weekday and a month, does rotating the *month* subspace
+at the month token move the model's month answer by the right number of months?
+
+Baseline accuracy on the three tasks is 1.00, 0.69 and 1.00. Rotating by k months:
+
+| | answer shifts by exactly k (k != 0) |
+|---|---|
+| rotate in the fitted month circle | 0.028 |
+| rotate in PC3-PC4 (variance-matched control) | 0.008 |
+| rotate in PC5-PC6 (variance-matched control) | 0.017 |
+| chance | 0.083 |
+
+**The month answer does not rotate.** Every condition is below chance, and essentially all the
+probability mass sits in two columns: the answer is unchanged, or it is the input month itself.
+
+What the rotation *does* change is how often the model fails to increment at all:
+
+| rotation applied | -3 | -2 | -1 | 0 | +1 | +2 | +3 |
+|---|---|---|---|---|---|---|---|
+| answer = the input month (failure to increment) | 0.27 | 0.21 | 0.17 | **0.10** | 0.05 | 0.05 | 0.00 |
+
+Rotation 0 gives 0.10, which is the baseline error rate. Rotating one way makes the +1 operation
+fail more often, rotating the other way makes it more reliable, monotonically. The month circle
+therefore *gates* the arithmetic without *carrying* its output. Rotating the month subspace also
+never disturbed the weekday answer in the same prompt (0.00 at every shift), which is consistent
+with the near-orthogonality measured in step 7.
+
+### Ruling out "the intervention never landed"
+
+The circle is fitted on single-factor prompts and applied in date prompts, so it could have missed.
+`09_intervention_diagnostic.py` measures where the activations actually sit and how far a rotation
+moves them:
+
+| | in-plane radius, fitting prompts | in-plane radius, use prompts | displacement at k=1 | at k=3 |
+|---|---|---|---|---|
+| months, circle | 44.8 | 45.4 | 23.5 (9.8% of \|x\|) | 64.2 |
+| weekdays, circle (step 3, which worked) | 49.2 | 61.2 | 53.1 (17.6% of \|x\|) | 119.3 |
+
+The fitted centre transfers cleanly to the date prompts (radius 44.8 -> 45.4), so the intervention
+is landing on the right part of the space. One month step is a smaller perturbation than one
+weekday step, because 1/12 of a circle is a smaller angle than 1/7 - but **a 3-month rotation
+displaces the activation by 64, more than the 53 that moved the weekday answer, and still produces
+zero on-target shifts.** Perturbation size does not explain the null.
+
+So the honest reading is that the weekday result of step 3 does not generalise. A circle can be
+present, ordered, and causally relevant to whether a computation succeeds, without being the
+representation the computation reads its answer off. That distinction is easy to lose when the only
+evidence is a picture of a ring.
 
 ### Prior work worth knowing
 
