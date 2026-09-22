@@ -1,2 +1,40 @@
 Loaded pretrained model google/gemma-2-2b-it into HookedTransformer
 === layer 16: 5 templates per pair, three read positions ===
+
+  read at weekday_token
+    additive R^2 1.000  interaction 0.000  angles [88.3 88.5] deg
+    two longest 1-cycles: 0.143, 0.000
+      null, matched Gaussian      : 0.278, 0.236  (95th pct)
+      null, additive random levels: 0.281, 0.249
+      verdict: not clear
+
+  read at month_token
+    additive R^2 0.996  interaction 0.004  angles [88.4 89.8] deg
+    two longest 1-cycles: 0.024, 0.015
+      null, matched Gaussian      : 0.240, 0.201  (95th pct)
+      null, additive random levels: 0.288, 0.268
+      verdict: not clear
+
+  read at last_token
+    additive R^2 0.995  interaction 0.005  angles [88.5 89.7] deg
+    two longest 1-cycles: 0.039, 0.035
+      null, matched Gaussian      : 0.226, 0.191  (95th pct)
+      null, additive random levels: 0.297, 0.263
+      verdict: not clear
+
+=== depth sweep over layers [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24] (read at the last token) ===
+  layer  0: additive R^2 0.999  min angle  86.7 deg  1-cycles 0.112, 0.009
+  layer  2: additive R^2 0.995  min angle  86.1 deg  1-cycles 0.055, 0.030
+  layer  4: additive R^2 0.996  min angle  87.7 deg  1-cycles 0.110, 0.022
+  layer  6: additive R^2 0.995  min angle  84.1 deg  1-cycles 0.096, 0.056
+  layer  8: additive R^2 0.992  min angle  81.6 deg  1-cycles 0.063, 0.063
+  layer 10: additive R^2 0.988  min angle  84.1 deg  1-cycles 0.089, 0.076
+  layer 12: additive R^2 0.987  min angle  82.2 deg  1-cycles 0.077, 0.075
+  layer 14: additive R^2 0.994  min angle  87.7 deg  1-cycles 0.128, 0.052
+  layer 16: additive R^2 0.995  min angle  88.5 deg  1-cycles 0.039, 0.035
+  layer 18: additive R^2 0.996  min angle  86.6 deg  1-cycles 0.034, 0.027
+  layer 20: additive R^2 0.997  min angle  86.4 deg  1-cycles 0.087, 0.027
+  layer 22: additive R^2 0.992  min angle  84.8 deg  1-cycles 0.061, 0.029
+  layer 24: additive R^2 0.989  min angle  83.7 deg  1-cycles 0.065, 0.052
+
+figure -> D:\dev\circular-features\figures\torus_validation_gemma-2-2b.png

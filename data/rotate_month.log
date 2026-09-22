@@ -1,0 +1,7 @@
+Loaded pretrained model google/gemma-2-2b-it into HookedTransformer
+gemma-2-2b layer 16: month circle, -0.139pi per month (ideal 0.167pi)
+
+baseline:
+  It was D, M. The next month is               offset +1  accuracy 1.00
+  On D in M. One month later it was            offset +1  accuracy 0.69
+  It was D, M. The previous month was          offset -1  accuracy 1.00

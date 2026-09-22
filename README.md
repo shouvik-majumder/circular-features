@@ -38,6 +38,12 @@ from `D:\dev\ESR\.env`.
 |---|---|---|
 | `01_find_circles.py` | Item vectors, PCA, circularity measures against two nulls, figure | ~1 min GPT-2, ~3 min Gemma |
 | `02_layer_sweep.py` | The same three measures at every layer | ~5 min |
+| `03_rotate_circle.py` | Rotate inside the fitted circle plane; does the answer advance by k? | ~10 min |
+| `04_multicycle.py` | Weekday x month joint geometry, day-of-month Fourier spectrum | ~10 min |
+| `05_summary_figures.py` | Cross-project summary panels | ~5 min |
+| `06_deformation.py` | Harmonics, ellipse axis ratio, angular gaps: circle or deformed loop? | ~3 min |
+| `07_torus_validation.py` | Denser sampling, three read positions, cloud-perturbing nulls, depth sweep | ~25 min |
+| `08_rotate_month.py` | Rotate the month subspace inside a full date prompt | ~30 min |
 
 ```powershell
 python scripts/01_find_circles.py                                  # gpt2, layer 7
@@ -130,20 +136,19 @@ one-to-one rotation of the answer.
 
 ## Step 4: more than one cycle at once
 
-**Weekday x month is a torus.** 84 prompts, one per (weekday, month) pair:
+84 prompts, one per (weekday, month) pair. The first pass looked like a torus. It is not one; see
+step 7. What is real:
 
 | Measure | Weekday x month | Arbitrary control pairing |
 |---|---|---|
-| additive model R^2 | **0.982** | 0.888 |
-| interaction left over | **0.018** | 0.112 |
-| principal angles between the two circle planes | 83, 89 degrees | - |
-| persistent homology, two longest 1-cycles | **0.292, 0.291** | 0.063, 0.043 |
+| additive model R^2 | **0.995** | 0.888 |
+| interaction left over | **0.005** | 0.112 |
+| principal angles between the two circle planes | 88.5, 89.7 degrees | - |
 
-Three independent signatures agree. The joint representation is almost perfectly additive, the
-two circles occupy near-orthogonal directions, and the point cloud carries **two** long-lived
-loops of nearly equal persistence, which is the topological signature of a torus. A single circle
-(the 7 weekday points alone) gives one loop at 0.136. The control pairing gives loops five times
-shorter.
+The joint representation is almost perfectly additive and the two factors live in near-orthogonal
+subspaces. That is a clean **product structure**: the model writes weekday and month into the
+residual stream as independent, non-interfering summands. The claim it does *not* support is the
+topological one.
 
 **Day of month is a helix.** Regressing the 31 item vectors on a linear ramp plus sine/cosine
 pairs at several candidate periods, and testing each against a shuffled-label null:
@@ -160,6 +165,60 @@ A linear component plus a circular one is a helix, which matches
 they report (2, 5, 10) do **not** clear the null here, plausibly because 31 items and 17 fitted
 parameters leave little power. The period-3 component is unexplained and survived a fix to the
 prompt templates.
+
+## Step 6: is it a circle, or a deformed loop?
+
+Three independent measures, all on the same item vectors, at `blocks.16.hook_resid_post`:
+
+| | weekdays | months | perfect circle |
+|---|---|---|---|
+| power in harmonic 1 | 0.57 (null 0.45) | 0.38 (null 0.23) | 1.00 |
+| variance in the best plane | 0.60 | 0.39 | 1.00 |
+| ellipse axis ratio | 0.81 | 0.94 | 1.00 |
+| angular gaps | 33-75 deg (ideal 51) | 12-74 deg (ideal 30) | equal |
+
+**They are deformed loops, not circles.** Roughly half the structure is at harmonic 1; the rest is
+higher harmonics, out-of-plane wobble and uneven spacing. Months are the more deformed of the two,
+which is not obvious from a PCA scatter plot - the projection is chosen to make the loop look as
+round as possible. The order is right, the shape is only approximately circular.
+
+## Step 7: the torus does not survive proper nulls
+
+The step-4 topology result was compared against one arbitrary control pairing that happened to
+have unusually low persistence. Redone with denser sampling (5 templates per pair, averaged),
+three read positions, and two nulls that actually perturb the point cloud:
+
+- **matched Gaussian**: 84 points from a Gaussian with the same covariance. PCA looks the same,
+  the product structure is destroyed.
+- **additive random levels**: the same additive model with random vectors per level. Additive, but
+  each factor is no longer circular.
+
+At layer 16, with the two longest 1-cycle lifetimes (a torus needs two long ones):
+
+| read position | real | Gaussian null 95th | additive-random null 95th |
+|---|---|---|---|
+| weekday token (see caveat) | 0.143, 0.000 | 0.278, 0.236 | 0.281, 0.249 |
+| month token | 0.024, 0.015 | 0.240, 0.201 | 0.288, 0.268 |
+| last token | 0.039, 0.035 | 0.226, 0.191 | 0.297, 0.263 |
+
+**The real cloud has an order of magnitude *less* persistence than chance**, at every read
+position and at every layer sampled (0 to 24: longest 1-cycle 0.034 to 0.128, never approaching
+the nulls). There is no torus.
+
+Two methodological notes, both mistakes made and then caught here:
+
+- A **label permutation cannot test topology**. Shuffling the item names leaves the point cloud,
+  and therefore the barcode, exactly as it was. Any null for a topological claim has to move the
+  points.
+- **Reading at the weekday token is not a valid joint measurement.** Attention is causal, so in
+  "The date is Monday, March the 3rd" the month has not been seen when the weekday token is
+  computed; additivity there is 1.000 by construction, and the barcode shows exactly one loop
+  (0.143) with nothing second (0.000) - the weekday circle alone, as it must. Only the final token
+  sees both factors.
+
+So the honest statement is: two deformed loops, written additively into near-orthogonal subspaces,
+with no toroidal topology. Additivity plus per-factor circularity is *necessary* for a torus but
+not, at this sampling density and this degree of deformation, sufficient to produce one.
 
 ### Prior work worth knowing
 

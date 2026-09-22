@@ -57,25 +57,31 @@ JOINT_TEMPLATES = [
 
 
 @torch.no_grad()
-def joint_activations(model, layer: int, hook: str, device: str):
+def joint_activations(model, layers: list[int], hook: str, device: str):
     """Activations for every (weekday, month) pair at three read positions, averaged over
-    templates. Returns dict position -> [84, d], plus the factor index arrays."""
-    name = f"blocks.{layer}.hook_{hook}"
-    acc = {k: {} for k in ("weekday_token", "month_token", "last_token")}
+    templates, for ALL requested layers in a single forward pass each.
+
+    Returns {layer: {position: [84, d]}} plus the factor index arrays. Caching every layer at
+    once rather than re-running the prompts per layer is a 13x saving on the depth sweep.
+    """
+    names = [f"blocks.{L}.hook_{hook}" for L in layers]
+    acc = {L: {k: {} for k in ("weekday_token", "month_token", "last_token")} for L in layers}
     for i, d in enumerate(WEEKDAYS.items):
         for j, mo in enumerate(MONTHS.items):
             for t in JOINT_TEMPLATES:
                 p = t.format(a=d, b=mo)
                 toks = model.to_tokens(p, prepend_bos=True)
-                _, cache = model.run_with_cache(toks, names_filter=[name])
-                A = cache[name][0].float().cpu().numpy()
+                _, cache = model.run_with_cache(toks, names_filter=names)
                 _, de = item_token_span(model, p, d)
                 _, me = item_token_span(model, p, mo)
-                for key, idx in (("weekday_token", de - 1), ("month_token", me - 1),
-                                 ("last_token", A.shape[0] - 1)):
-                    acc[key].setdefault((i, j), []).append(A[idx])
+                for L, nm in zip(layers, names):
+                    A = cache[nm][0].float().cpu().numpy()
+                    for key, idx in (("weekday_token", de - 1), ("month_token", me - 1),
+                                     ("last_token", A.shape[0] - 1)):
+                        acc[L][key].setdefault((i, j), []).append(A[idx])
     keys = [(i, j) for i in range(len(WEEKDAYS.items)) for j in range(len(MONTHS.items))]
-    out = {k: np.stack([np.mean(acc[k][key], axis=0) for key in keys]) for k in acc}
+    out = {L: {k: np.stack([np.mean(acc[L][k][key], axis=0) for key in keys]) for k in acc[L]}
+           for L in layers}
     a_idx = np.array([k[0] for k in keys])
     b_idx = np.array([k[1] for k in keys])
     return out, a_idx, b_idx
@@ -131,7 +137,9 @@ def main() -> None:
 
     # ------------------------------------------- 1 + 2: read positions and nulls
     print(f"=== layer {layer}: {len(JOINT_TEMPLATES)} templates per pair, three read positions ===")
-    acts, a_idx, b_idx = joint_activations(model, layer, args.hook, device)
+    layers = args.layers or list(range(0, model.cfg.n_layers, 2))
+    all_acts, a_idx, b_idx = joint_activations(model, sorted(set(layers + [layer])), args.hook, device)
+    acts = all_acts[layer]
     out["positions"] = {}
     for pos, X in acts.items():
         dec = two_way_decomposition(X, a_idx, b_idx)
@@ -159,13 +167,14 @@ def main() -> None:
         out["positions"][pos]["verdict"] = verdict
 
     # ------------------------------------------------------- 3: depth profile
+    # Read at the LAST token. Attention is causal, so at the weekday token the month has not been
+    # seen yet: additivity there is 1.000 by construction, not by finding.
     layers = args.layers or list(range(0, model.cfg.n_layers, 2))
-    print(f"\n=== depth sweep over layers {layers} (read at the weekday token) ===")
+    print(f"\n=== depth sweep over layers {layers} (read at the last token) ===")
     prof = {"layer": [], "additive_r2": [], "interaction": [], "angle_min": [],
             "h1_first": [], "h1_second": []}
     for L in layers:
-        a, ai, bi = joint_activations(model, L, args.hook, device)
-        X = a["weekday_token"]
+        X, ai, bi = all_acts[L]["last_token"], a_idx, b_idx
         dec = two_way_decomposition(X, ai, bi)
         Wa = np.stack([X[ai == i].mean(0) for i in range(ai.max() + 1)])
         Wb = np.stack([X[bi == j].mean(0) for j in range(bi.max() + 1)])
