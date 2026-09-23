@@ -1,8 +1,7 @@
 """Loading models and collecting one activation vector per item.
 
-We use TransformerLens for the small models because `run_with_cache` names every internal
-activation, and the naming convention (`blocks.7.hook_resid_post`) is the same one used by
-Gemma Scope and by the ESR project.
+We use TransformerLens because `run_with_cache` returns every internal activation by name
+(`blocks.7.hook_resid_post`), the standard convention in mechanistic interpretability.
 
 The only subtlety worth knowing: an item like "Wednesday" may be several tokens. We take the
 activation at the **last token of the item**, which is where the model has finished reading the

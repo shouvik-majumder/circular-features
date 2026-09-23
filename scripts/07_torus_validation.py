@@ -1,11 +1,8 @@
-"""Step 7: does the torus survive proper controls?
+"""Step 7: is the weekday x month representation a torus?
 
-Three weaknesses in the first pass, addressed here.
-
-  denser      one prompt per (weekday, month) pair, read only at the final token. Now several
-              templates per pair, and read at the weekday token, the month token and the final
-              token separately. The last-token view compresses each factor's angular range, so
-              it was the worst place to look.
+  sampling    five templates per (weekday, month) pair, read at the weekday token, the month
+              token and the final token. Only the final token has attended to both factors
+              (attention is causal), so it is the valid joint measurement.
 
   real nulls  a label permutation cannot test topology: shuffling names leaves the point cloud,
               and therefore the barcode, untouched. Two nulls that do perturb the cloud:
@@ -26,8 +23,8 @@ Three weaknesses in the first pass, addressed here.
                 dominant    does the joint cloud show the dominant factor's loop at all?
                             A synthetic torus with this split does, strongly.
 
-  depth       is the product structure inherited from the embeddings, as the single circle
-              largely was, or built by the network? Sweep every layer.
+  depth       is the product structure present from the first layers or built later? Sweep
+              every other layer.
 
   python scripts/07_torus_validation.py --model gemma-2-2b-it --dtype bfloat16
 """

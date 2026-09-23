@@ -9,9 +9,11 @@ This is a stronger claim than "a probe can read the day off the circle". A probe
 information is present. The rotation shows the model reads it from *there*.
 
 Controls, because a rotation is a big perturbation and something will always change:
-  random_plane   rotate by the same angle inside a random 2D plane of the same norm
-  shuffle        rotate by an angle drawn for a different day
-  norm-matched   report how far the activation moved, so the two conditions are comparable
+  pc_plane       rotate by the same angle in the PC3-PC4 or PC5-PC6 plane of the same item
+                 vectors, which displaces the activation by a comparable amount
+  random_plane   rotate in a random 2D plane (barely moves the activation; reported only
+                 for completeness)
+  displacement   how far the activation moved, so conditions can be compared
 """
 from __future__ import annotations
 

@@ -43,10 +43,9 @@ plt.rcParams.update({"figure.dpi": 160, "savefig.dpi": 160, "font.size": 9,
                      "legend.frameon": False, "figure.facecolor": "white"})
 DARK, GREY, ACCENT = "0.25", "0.65", "#1f77b4"
 
-# Caution: Gemma tokenises numbers digit by digit, so for Gemma the item vector is read at the
-# units digit and 1-9 differ in length from 10-31. See 10_day_of_month.py for the clean GPT-2 run.
-# Neutral numeric contexts. An earlier version used "the {item}th", which is ungrammatical for
-# most values ("1th", "2th") and produced a spurious period-3 component from the suffix pattern.
+# Neutral numeric contexts (no ordinal suffixes). Gemma tokenises numbers digit by digit, so for
+# Gemma the vector is read at the units digit; 10_day_of_month.py repeats this on GPT-2, where
+# 1-31 are single tokens.
 DAY_NUMBERS = ItemSet(
     "day of month", [str(i) for i in range(1, 32)],
     ["The date is {item}", "We met on day {item}", "It happened on day {item}",

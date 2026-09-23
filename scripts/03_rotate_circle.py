@@ -12,8 +12,8 @@ displace the activation by a comparable amount, so they are the controls that co
 random 2D planes (which barely displace it, reported for completeness).
 
 The shift is measured against the model's OWN unrotated answer for that prompt, not against the
-correct answer. Otherwise baseline mistakes (one task is only 0.57 accurate) leak into the table
-and can masquerade as, or mask, a rotation effect. The old correct-answer table is kept alongside.
+correct answer, so that baseline errors (one task is only 0.57 accurate) cannot masquerade as,
+or mask, a rotation effect. The correct-answer table is saved alongside.
 
   python scripts/03_rotate_circle.py --model gemma-2-2b-it --dtype bfloat16 --layer 16
 """
@@ -133,7 +133,7 @@ def main() -> None:
         else:
             pu, pv = random_plane(len(u), rng)
         # rotation k -> distribution of observed shift, relative to the unrotated answer (primary)
-        # and relative to the correct answer (kept for comparison with the first version)
+        # and relative to the correct answer
         table = np.zeros((len(shifts_k), 7))
         table_vs_correct = np.zeros((len(shifts_k), 7))
         disp = []
