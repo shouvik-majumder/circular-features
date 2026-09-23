@@ -18,9 +18,10 @@ project.
 
 ## Setup
 
-```powershell
+```bash
+git clone https://github.com/shouvik-majumder/circular-features.git
+cd circular-features
 conda activate circfeat
-cd D:\dev\circular-features
 python scripts/01_find_circles.py
 ```
 
@@ -32,8 +33,9 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install transformer_lens sae-lens transformers numpy scipy matplotlib pandas tqdm scikit-learn einops python-dotenv
 ```
 
-Gemma runs need the gated weights, so set `HF_HOME` to the shared cache and export `HF_TOKEN`
-from `D:\dev\ESR\.env`.
+Gemma runs need the gated weights: accept the Gemma licence on Hugging Face, then export a
+Hugging Face access token as `HF_TOKEN` (optionally set `HF_HOME` to choose the cache location).
+GPT-2 needs neither.
 
 ## Scripts
 
@@ -362,3 +364,7 @@ lose when the only evidence is a picture of a ring.
 - Cyclic-concept arithmetic in Llama-3.1-8B runs through generic base-10 addition rather than
   concept-specific modular arithmetic: [arXiv:2605.01148](https://arxiv.org/abs/2605.01148).
 - Neither studies **joint** cyclic variables or toroidal structure. That part appears open.
+
+## License
+
+MIT; see [LICENSE](LICENSE).
