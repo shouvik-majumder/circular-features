@@ -9,7 +9,7 @@ A re-implementation of the circular-feature analysis in
 written for learning and experimenting. It is not the authors' code and is not affiliated with
 them; see the paper for the original work.
 
-## What it does
+## Overview
 
 The paper reports that language models represent days of the week and months of the year on
 circles in the residual stream, and use them for modular arithmetic. This repository
