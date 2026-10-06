@@ -7,9 +7,6 @@ Runs the same three measures at every layer, for every item set. Two things to l
   * whether the ring is present from the embedding onward (so it comes from token identity)
     or is built up through the network (so the model computes it).
 
-That second question is the same one that separated Mess3 from RRXOR in the belief-geometry
-project: flat means copied, rising means computed.
-
   python scripts/02_layer_sweep.py --model gpt2
 """
 from __future__ import annotations

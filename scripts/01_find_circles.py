@@ -2,7 +2,7 @@
 
 For each item set: collect one activation vector per item, project to its own first two
 principal components, and measure how ring-like and how correctly ordered the result is.
-Everything is reported against two nulls, because a ring on its own means very little.
+Everything is reported against two nulls.
 
   python scripts/01_find_circles.py                        # gpt2, layer 7
   python scripts/01_find_circles.py --layer 5 --hook resid_pre

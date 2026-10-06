@@ -8,7 +8,7 @@ model's answer advances by k days. Everything outside that 2D plane is left unto
   used     = rotating the circle changes the answer by the matching amount
 
 Controls: the same rotation in the PC3-PC4 and PC5-PC6 planes of the same item vectors (these
-displace the activation by a comparable amount, so they are the controls that count), and in
+displace the activation by a comparable amount, the primary controls), and in
 random 2D planes (which barely displace it, reported for completeness).
 
 The shift is measured against the model's OWN unrotated answer for that prompt, not against the

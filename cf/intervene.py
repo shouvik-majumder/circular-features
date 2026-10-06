@@ -1,18 +1,18 @@
-"""Turning geometry into mechanism: rotate the circle and see if the answer rotates.
+"""Rotate the circle and test whether the model's answer rotates.
 
-The logic. If weekdays sit on a circle spanned by two directions u, v, and the model *uses* that
-circle to compute "k days after X", then rotating a day's representation inside the (u, v) plane
-by k steps should make the model answer as if the day were k later. Nothing else about the
-activation is touched: the component outside the plane is left exactly as it was.
+If weekdays sit on a circle spanned by two directions u, v, and the model uses that circle to
+compute "k days after X", then rotating a day's representation inside the (u, v) plane by k
+steps should make the model answer as if the day were k later. The component outside the
+plane is left unchanged.
 
-This is a stronger claim than "a probe can read the day off the circle". A probe only shows the
-information is present. The rotation shows the model reads it from *there*.
+A probe shows that the information is present; the rotation tests whether the model reads it
+from there.
 
-Controls, because a rotation is a big perturbation and something will always change:
+Controls:
   pc_plane       rotate by the same angle in the PC3-PC4 or PC5-PC6 plane of the same item
                  vectors, which displaces the activation by a comparable amount
-  random_plane   rotate in a random 2D plane (barely moves the activation; reported only
-                 for completeness)
+  random_plane   rotate in a random 2D plane (barely moves the activation; reported for
+                 completeness)
   displacement   how far the activation moved, so conditions can be compared
 """
 from __future__ import annotations
@@ -58,8 +58,8 @@ def rotation_matrix(u: np.ndarray, v: np.ndarray, theta: float) -> np.ndarray:
 def random_plane(d: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     """A random orthonormal 2D plane in the full space.
 
-    Weak as a control: the item vectors have almost no component in a random plane, so rotating
-    there barely moves them. Reported for completeness, but `pc_plane` is the control that counts.
+    The item vectors have almost no component in a random plane, so rotating there barely moves
+    them. Reported for completeness; `pc_plane` is the primary control.
     """
     A = rng.standard_normal((d, 2))
     Q, _ = np.linalg.qr(A)
@@ -69,9 +69,9 @@ def random_plane(d: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarr
 def pc_plane(X: np.ndarray, i: int, j: int) -> tuple[np.ndarray, np.ndarray]:
     """The plane spanned by principal components i and j of the item vectors.
 
-    This is the control that matters. PC3-PC4 carry real variance of the same data, so rotating
-    there displaces the activations by a comparable amount, but they are not the circle. If the
-    effect were simply 'large perturbations change the answer', this control would reproduce it.
+    The primary control. PC3-PC4 carry real variance of the same data, so rotating there
+    displaces the activations by a comparable amount, but they are not the circle. If the effect
+    were simply 'large perturbations change the answer', this control would reproduce it.
     """
     Xc = X - X.mean(0, keepdims=True)
     _, _, Vt = np.linalg.svd(Xc, full_matrices=False)

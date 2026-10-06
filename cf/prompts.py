@@ -10,7 +10,7 @@ directions. To test that we need:
 
 Without the last two, "the points form a ring" is not evidence of anything: seven random
 high-dimensional vectors projected to their own top two principal components often look
-vaguely ring-shaped. The controls are the whole point.
+vaguely ring-shaped.
 
 Each item is embedded in several short templates and the activations are averaged, so that we
 measure the representation of the *concept* rather than the quirks of one sentence.

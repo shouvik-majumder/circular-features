@@ -4,7 +4,7 @@ Three views that make the numbers in step 4 visible:
 
   main effects  the fitted weekday and month main effects, each in its own best plane.
   torus 3D      the same points drawn on a torus, radius from the month angle, tube from the
-                weekday angle. IMPORTANT: this is a rendering of two fitted angles onto a torus
+                weekday angle. Note: this is a rendering of two fitted angles onto a torus
                 we drew ourselves. Any additive two-factor representation produces this picture,
                 whatever its real topology. Step 7 shows the topology is NOT toroidal
                 (persistence 0.039/0.035 against nulls at 0.23/0.30), so read the panel as "the

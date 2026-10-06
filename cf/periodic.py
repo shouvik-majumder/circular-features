@@ -15,7 +15,7 @@ Three questions, three tools.
 
 3. **What is the topology?** `betti_numbers` runs persistent homology. A circle gives one
    long-lived 1-cycle; a torus gives two, plus a 2-cycle. This does not assume any parametric
-   shape, which is the point of using it.
+   shape.
 """
 from __future__ import annotations
 

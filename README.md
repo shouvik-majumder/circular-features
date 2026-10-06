@@ -1,6 +1,6 @@
 # Circular features for weekdays and months
 
-A small, self-contained re-implementation of the circular-feature analysis in
+A re-implementation of the circular-feature analysis in
 
 > Engels et al., *Not All Language Model Features Are One-Dimensionally Linear*, ICLR 2025
 > ([arXiv:2405.14860](https://arxiv.org/abs/2405.14860);
@@ -12,41 +12,39 @@ them; see the paper for the original work.
 ## What it does
 
 The paper reports that language models represent days of the week and months of the year on
-circles in the residual stream, and use them for modular arithmetic. This repo
+circles in the residual stream, and use them for modular arithmetic. This repository
 
 1. collects one residual-stream vector per item (e.g. "Monday", averaged over five prompt
    templates) in GPT-2 small and Gemma-2-2B-IT,
 2. measures how circular and how well-ordered the items are, against null models and against
    non-cyclic item sets (number words, animals, objects),
-3. tests whether the circle is *used*: rotating an item's activation inside the circle plane by
+3. tests whether the circle is used: rotating an item's activation inside the circle plane by
    k steps and checking whether the model's answer ("Today is Monday. Tomorrow is") moves by k.
 
 ![Circles in Gemma-2-2B-IT](figures/circles_gemma-2-2b-it_L16_resid_post.png)
 
-## Additions beyond the paper
+## Differences from the paper
 
-- **Stronger nulls**: a Gaussian matched to each item set's covariance; for rotations, control
-  planes that displace the activation by a comparable amount; answers scored against the model's
-  own unrotated answer, with 95% intervals.
-- **Layer sweep** from the token embedding upward: is the circle inherited or built?
-- **Shape**: harmonic decomposition and angular spacing, to ask whether the loop is a circle or a
-  deformed loop.
-- **Months in date prompts**: rotating the month circle inside "It was Monday, March. The next
-  month is".
-- **Two cycles at once**: weekday x month prompts, with variance decomposition and persistent
-  homology (with an ideal-torus positive control) to test for a torus.
-- **Day of month** (1-31): periodic components and a linear trend, i.e. a helix.
+- Null models: a Gaussian matched to each item set's covariance; for rotations, control planes
+  that displace the activation by a comparable amount; answers scored against the model's own
+  unrotated answer, with 95% intervals.
+- A layer sweep from the token embedding upward.
+- A harmonic decomposition and angular spacing of each loop.
+- Month rotation inside date prompts ("It was Monday, March. The next month is").
+- Weekday x month prompts, with a variance decomposition and persistent homology (with an
+  ideal-torus positive control) to test for a torus.
+- Day of month (1-31): periodic components and a linear trend.
 
 ## Results (Gemma-2-2B-IT, layer 16, unless noted)
 
-- Weekdays and months form correctly ordered loops that beat the nulls in both models; number
+- Weekdays and months form correctly ordered loops that exceed the nulls in both models; number
   words are ordered but not circular.
 - The weekday loop is already present in the token embeddings; the month loop is tightened by the
   first few layers.
 - The loops are deformed: 57% (weekdays) and 38% (months) of their variance is in the first
   circular harmonic.
-- Rotating the weekday circle moves the answer by exactly k in 23% of trials, vs 3-6% for control
-  planes. Rotating the month circle in date prompts does not move month answers.
+- Rotating the weekday circle moves the answer by exactly k in 23% of trials, against 3-6% for
+  control planes. Rotating the month circle in date prompts does not move month answers.
 - Weekday and month combine additively in near-orthogonal subspaces, but the joint representation
   is not a torus.
 - Day of month shows a period-3 component, a period-31 component and a linear trend in both

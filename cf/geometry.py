@@ -14,7 +14,7 @@ Three numbers are reported for every item set:
                   coincidental ring: seven arbitrary points can look round, but they will not be
                   in the right order.
 
-The controls matter more than the metrics. Random high-dimensional points projected onto their
+Random high-dimensional points projected onto their
 own top two principal components tend to look ring-like, because the projection maximises spread.
 So every number is reported alongside the same number computed for control item sets and for
 shuffled labels.
